@@ -17,6 +17,7 @@ import {
 import { motion } from 'motion/react';
 
 import ProfitLossReport from './reports/ProfitLoss';
+import SalesReport from './reports/SalesReport';
 
 export default function Reports() {
   const location = useLocation();
@@ -24,6 +25,10 @@ export default function Reports() {
 
   if (path === '/reports/profit-loss') {
     return <ProfitLossReport />;
+  }
+
+  if (path === '/reports/product-sale') {
+    return <SalesReport />;
   }
 
   const getReportInfo = () => {
