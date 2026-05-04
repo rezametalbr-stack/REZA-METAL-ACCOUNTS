@@ -163,9 +163,28 @@
         "subType": { "type": "string" },
         "description": { "type": "string" },
         "balance": { "type": "number" },
-        "isActive": { "type": "boolean" }
+        "isActive": { "type": "boolean" },
+        "isControlAccount": { "type": "boolean", "description": "If true, system auto-posts to this" }
       },
       "required": ["code", "name", "type"]
+    },
+    "JournalEntry": {
+      "title": "Journal Entry",
+      "description": "Manual or automated accounting entry in the ledger",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "reference": { "type": "string" },
+        "description": { "type": "string" },
+        "lines": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "posted"] },
+        "performedBy": { "type": "string" }
+      },
+      "required": ["date", "reference", "description", "lines", "totalAmount"]
     }
   },
   "firestore": {
@@ -179,6 +198,7 @@
     "expenses/{expenseId}": { "schema": "Expense", "description": "Expenses collection" },
     "users/{userId}": { "schema": "UserProfile", "description": "User profiles and roles" },
     "stockAdjustments/{adjustmentId}": { "schema": "StockAdjustment", "description": "Stock adjustments log" },
-    "accounts/{accountId}": { "schema": "Account", "description": "Chart of accounts for the business" }
+    "accounts/{accountId}": { "schema": "Account", "description": "Chart of accounts for the business" },
+    "journalEntries/{entryId}": { "schema": "JournalEntry", "description": "Manual accounting ledger entries" }
   }
 }

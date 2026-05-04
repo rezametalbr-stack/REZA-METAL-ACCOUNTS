@@ -14,6 +14,7 @@ import Purchases from './pages/Purchases';
 import Reports from './pages/Reports';
 import StockAdjustmentReport from './pages/StockAdjustmentReport';
 import ChartOfAccounts from './pages/ChartOfAccounts';
+import JournalEntries from './pages/JournalEntries';
 import InvoiceView from './pages/InvoiceView';
 import Login from './pages/Login';
 
@@ -53,8 +54,10 @@ function AppContent() {
           <Route path="reports/product-sale" element={<Reports />} />
           <Route path="reports/purchase-payment" element={<Reports />} />
           <Route path="reports/sale-payment" element={<Reports />} />
+          <Route path="reports/balance-sheet" element={<Reports />} />
           
           <Route path="accounting/chart-of-accounts" element={<ChartOfAccounts />} />
+          <Route path="accounting/journal-entries" element={<JournalEntries />} />
           
           <Route path="invoice/:id" element={<InvoiceView />} />
         </Route>

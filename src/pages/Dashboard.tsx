@@ -60,6 +60,9 @@ export default function Dashboard() {
         if (doc.data().stock <= 10) lowStock++;
       });
 
+      // Simple Net Profit calculation
+      const netProfit = totalS - totalE;
+
       setMetrics({
         totalSales: totalS,
         totalExpenses: totalE,
@@ -76,12 +79,15 @@ export default function Dashboard() {
     <div className="space-y-10">
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-2xl font-black text-white tracking-tight">Business Intelligence</h1>
+          <h1 className="text-3xl font-black text-white tracking-tighter">Business Intelligence</h1>
           <p className="text-slate-500 font-medium mt-1">Real-time health of Reza Metal Industries</p>
         </div>
-        <div className="flex gap-2">
-          <div className="p-1 px-3 bg-slate-800/50 border border-slate-700 rounded-lg text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            Last Updated: Just Now
+        <div className="flex gap-3">
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3">
+            <div className="h-2 w-2 bg-emerald-500 rounded-full animate-ping" />
+            <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest leading-none">
+              Ledger Synced
+            </span>
           </div>
         </div>
       </div>
@@ -105,16 +111,16 @@ export default function Dashboard() {
           color="rose"
         />
         <MetricCard 
-          title="Total Products" 
-          value={metrics.inventoryCount.toString()} 
+          title="Stock at Risk" 
+          value={metrics.lowStockItems.toString()} 
           icon={Package}
           color="amber"
-          trend="Stock Up"
-          trendUp={true}
+          trend={metrics.lowStockItems > 0 ? "Action Required" : "Stable"}
+          trendUp={metrics.lowStockItems > 0 ? false : true}
         />
         <MetricCard 
-          title="Active Customers" 
-          value={metrics.customerCount.toString()} 
+          title="Network Scope" 
+          value={`${metrics.customerCount} Entities`} 
           icon={Users}
           color="blue"
         />
@@ -191,16 +197,16 @@ export default function Dashboard() {
                   Create Sales Entry
                 </button>
                 <button 
-                  onClick={() => window.location.href = '/inventory'}
+                  onClick={() => window.location.href = '/accounting/journal-entries'}
                   className="w-full py-3 bg-slate-800 text-white border border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-700 transition-all active:scale-95"
                 >
-                  Add New Product
+                  Manual Ledger Entry
                 </button>
                 <button 
-                  onClick={() => window.location.href = '/expenses'}
+                  onClick={() => window.location.href = '/reports/balance-sheet'}
                   className="w-full py-3 bg-slate-800 text-white border border-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-700 transition-all active:scale-95"
                 >
-                  Record Expense
+                  Audit Balance Sheet
                 </button>
               </div>
             </div>

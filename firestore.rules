@@ -190,6 +190,21 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Journal Entry Validation
+    function isValidJournalEntry(data) {
+      return data.keys().hasAll(['date', 'reference', 'description', 'lines', 'totalAmount']) &&
+             data.reference is string && data.reference.size() > 0 &&
+             data.lines is list && data.lines.size() > 0 &&
+             data.totalAmount is number;
+    }
+
+    match /journalEntries/{entryId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidJournalEntry(incoming());
+      allow update: if isStaff() && isValidJournalEntry(incoming());
+      allow delete: if isAdmin();
+    }
+
     // StockAdjustment Validation
     function isValidStockAdjustment(data) {
       return data.keys().hasAll(['adjustmentNumber', 'productId', 'quantity', 'type', 'reason', 'date']) &&

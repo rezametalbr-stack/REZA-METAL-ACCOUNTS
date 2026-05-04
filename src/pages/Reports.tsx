@@ -12,12 +12,14 @@ import {
   CreditCard,
   Search,
   Download,
-  Filter
+  Filter,
+  Library
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 import ProfitLossReport from './reports/ProfitLoss';
 import SalesReport from './reports/SalesReport';
+import BalanceSheet from './reports/BalanceSheet';
 
 export default function Reports() {
   const location = useLocation();
@@ -31,10 +33,16 @@ export default function Reports() {
     return <SalesReport />;
   }
 
+  if (path === '/reports/balance-sheet') {
+    return <BalanceSheet />;
+  }
+
   const getReportInfo = () => {
     switch (path) {
       case '/reports/profit-loss':
         return { title: 'Profit and Loss Report', icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-500/10' };
+      case '/reports/balance-sheet':
+        return { title: 'Balance Sheet', icon: Library, color: 'text-slate-400', bg: 'bg-slate-500/10' };
       case '/reports/purchase-sale':
         return { title: 'Purchase and Sale Report', icon: ShoppingBag, color: 'text-amber-500', bg: 'bg-amber-500/10' };
       case '/reports/supplier-customer':

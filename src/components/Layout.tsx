@@ -80,7 +80,8 @@ export default function Layout() {
       isOpen: accountingOpen,
       setOpen: setAccountingOpen,
       subItems: [
-        { name: 'Chart of Accounts', path: '/accounting/chart-of-accounts' }
+        { name: 'Chart of Accounts', path: '/accounting/chart-of-accounts' },
+        { name: 'Journal Entries', path: '/accounting/journal-entries' }
       ]
     },
     { 
@@ -91,6 +92,7 @@ export default function Layout() {
       setOpen: setReportsOpen,
       subItems: [
         { name: 'Profit & Loss', path: '/reports/profit-loss' },
+        { name: 'Balance Sheet', path: '/reports/balance-sheet' },
         { name: 'Purchase & Sale', path: '/reports/purchase-sale' },
         { name: 'Supplier & Customer', path: '/reports/supplier-customer' },
         { name: 'Stock Report', path: '/reports/stock' },
