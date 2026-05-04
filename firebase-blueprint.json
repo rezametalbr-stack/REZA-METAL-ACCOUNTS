@@ -1,0 +1,184 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Inventory items sold by Reza Metal Industries",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the product (e.g., 3/4 conceal stop cock)" },
+        "sku": { "type": "string", "description": "Stock keeping unit" },
+        "price": { "type": "number", "description": "Unit price" },
+        "cost": { "type": "number", "description": "Unit cost (for profit margin calculation)" },
+        "stock": { "type": "number", "description": "Current stock quantity" },
+        "unit": { "type": "string", "description": "Unit of measurement (pcs, kg, etc.)" },
+        "category": { "type": "string", "description": "Product category" },
+        "commissionRate": { "type": "number", "description": "Commission percentage (0-100)" }
+      },
+      "required": ["name", "sku", "price", "stock"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Clients of Reza Metal Industries",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "totalPurchased": { "type": "number" },
+        "balance": { "type": "number", "description": "Outstanding amount to be paid by customer" }
+      },
+      "required": ["name"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Suppliers providing materials to Reza Metal Industries",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "balance": { "type": "number", "description": "Outstanding amount to be paid to supplier" }
+      },
+      "required": ["name"]
+    },
+    "Salesperson": {
+      "title": "Salesperson",
+      "description": "Agents or employees who earn commission on sales",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive"] }
+      },
+      "required": ["name"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Sales invoices",
+      "type": "object",
+      "properties": {
+        "invoiceNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "salespersonId": { "type": "string", "description": "ID of the salesperson who made the sale" },
+        "items": {
+          "type": "array",
+          "description": "List of products sold",
+          "items": { "type": "object" }
+        },
+        "totalAmount": { "type": "number" },
+        "discountPercentage": { "type": "number", "description": "Percentage discount applied to the total (0-100)" },
+        "discountValue": { "type": "number", "description": "The calculated currency value of the discount" },
+        "totalCommission": { "type": "number", "description": "Total commission earned from this sale" },
+        "paidAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["paid", "partial", "unpaid"] },
+        "date": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["invoiceNumber", "customerId", "totalAmount", "status", "date"]
+    },
+    "Commission": {
+      "title": "Commission",
+      "description": "Commission records for salespeople",
+      "type": "object",
+      "properties": {
+        "salespersonId": { "type": "string" },
+        "saleId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "paid"] }
+      },
+      "required": ["salespersonId", "saleId", "amount", "date", "status"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Business expenses",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "accountId": { "type": "string", "description": "Linked account from Chart of Accounts" },
+        "accountName": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "supplierId": { "type": "string" },
+        "status": { "type": "string", "enum": ["paid", "unpaid"] }
+      },
+      "required": ["description", "amount", "date", "status", "accountId"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Additional user data and roles",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "staff"] },
+        "name": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    },
+    "Purchase": {
+      "title": "Purchase",
+      "description": "Stock purchase transactions from suppliers",
+      "type": "object",
+      "properties": {
+        "purchaseNumber": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "items": { "type": "array", "items": { "type": "object" } },
+        "totalAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["paid", "partial", "unpaid"] },
+        "date": { "type": "string", "format": "date-time" }
+      },
+      "required": ["purchaseNumber", "supplierId", "totalAmount", "status", "date"]
+    },
+    "StockAdjustment": {
+      "title": "Stock Adjustment",
+      "description": "Manual adjustments to stock levels",
+      "type": "object",
+      "properties": {
+        "adjustmentNumber": { "type": "string" },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "quantity": { "type": "number", "description": "Quantity adjusted (positive or negative)" },
+        "type": { "type": "string", "enum": ["addition", "deduction"] },
+        "reason": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "performedBy": { "type": "string" }
+      },
+      "required": ["adjustmentNumber", "productId", "quantity", "type", "reason", "date"]
+    },
+    "Account": {
+      "title": "Account",
+      "description": "Financial account in the chart of accounts",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "description": "Accounting code (e.g. 1000, 5000)" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["Asset", "Liability", "Equity", "Revenue", "Expense"] },
+        "subType": { "type": "string" },
+        "description": { "type": "string" },
+        "balance": { "type": "number" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["code", "name", "type"]
+    }
+  },
+  "firestore": {
+    "products/{productId}": { "schema": "Product", "description": "Inventory products collection" },
+    "customers/{customerId}": { "schema": "Customer", "description": "Customers collection" },
+    "suppliers/{supplierId}": { "schema": "Supplier", "description": "Suppliers collection" },
+    "salespeople/{salespersonId}": { "schema": "Salesperson", "description": "Salespeople collection" },
+    "sales/{saleId}": { "schema": "Sale", "description": "Sales invoices collection" },
+    "purchases/{purchaseId}": { "schema": "Purchase", "description": "Purchases collection" },
+    "commissions/{commissionId}": { "schema": "Commission", "description": "Commission records collection" },
+    "expenses/{expenseId}": { "schema": "Expense", "description": "Expenses collection" },
+    "users/{userId}": { "schema": "UserProfile", "description": "User profiles and roles" },
+    "stockAdjustments/{adjustmentId}": { "schema": "StockAdjustment", "description": "Stock adjustments log" },
+    "accounts/{accountId}": { "schema": "Account", "description": "Chart of accounts for the business" }
+  }
+}

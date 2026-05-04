@@ -1,0 +1,312 @@
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { 
+  Package, 
+  Search, 
+  Plus, 
+  MoreVertical, 
+  Edit2, 
+  Trash2,
+  Filter,
+  Download,
+  X
+} from 'lucide-react';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { formatCurrency, cn, handleFirestoreError, OperationType } from '../lib/utils';
+import { motion, AnimatePresence } from 'motion/react';
+
+interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  price: number;
+  stock: number;
+  unit: string;
+  category: string;
+  commissionRate?: number;
+}
+
+export default function Inventory() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get('add') === 'true') {
+      setIsModalOpen(true);
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('add');
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
+      const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Product[];
+      setProducts(docs);
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  const filteredProducts = products.filter(p => 
+    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.sku.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const data = {
+      name: formData.get('name') as string,
+      sku: formData.get('sku') as string,
+      price: Number(formData.get('price')),
+      stock: Number(formData.get('stock')),
+      unit: formData.get('unit') as string,
+      category: formData.get('category') as string,
+      commissionRate: Number(formData.get('commissionRate')) || 0,
+    };
+
+    if (editingProduct) {
+      try {
+        await updateDoc(doc(db, 'products', editingProduct.id), data);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `products/${editingProduct.id}`);
+      }
+    } else {
+      try {
+        await addDoc(collection(db, 'products'), data);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, 'products');
+      }
+    }
+    setIsModalOpen(false);
+    setEditingProduct(null);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this product?')) {
+      try {
+        await deleteDoc(doc(db, 'products', id));
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `products/${id}`);
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-white tracking-tight uppercase">Inventory Catalog</h1>
+          <p className="text-slate-500 font-medium">Manage stock levels and product specifications</p>
+        </div>
+        <button 
+          onClick={() => {
+            setEditingProduct(null);
+            setIsModalOpen(true);
+          }}
+          className="bg-amber-500 hover:bg-amber-600 text-black px-6 py-2.5 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-xs transition-all shadow-[0_0_20px_rgba(245,158,11,0.2)] active:scale-95"
+        >
+          <Plus size={18} strokeWidth={3} />
+          Add Product
+        </button>
+      </div>
+
+      <div className="bg-[#161B22] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden text-slate-200">
+        <div className="p-5 border-b border-slate-800 flex flex-col md:flex-row gap-4 items-center bg-[#0F1218]">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search by name or SKU..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl py-2.5 pl-12 pr-4 focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all font-sans text-sm outline-none placeholder:text-slate-700"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all">
+              <Filter size={14} />
+              <span>Filter</span>
+            </button>
+            <button className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all">
+              <Download size={14} />
+              <span>Export</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-[#0B0D11]/50 text-slate-500 text-[10px] font-black uppercase tracking-widest border-b border-slate-800">
+              <tr>
+                <th className="px-6 py-5">Product Details</th>
+                <th className="px-6 py-5">SKU / ID</th>
+                <th className="px-6 py-5">Category</th>
+                <th className="px-6 py-5">Unit Price</th>
+                <th className="px-6 py-5">Stock Level</th>
+                <th className="px-6 py-5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/50">
+              {loading ? (
+                <tr><td colSpan={6} className="text-center py-12 text-slate-500 font-black uppercase text-xs tracking-widest">Loading inventory...</td></tr>
+              ) : filteredProducts.length === 0 ? (
+                <tr><td colSpan={6} className="text-center py-12 text-slate-600 font-black uppercase text-xs tracking-widest">No products found</td></tr>
+              ) : (
+                filteredProducts.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-800/10 transition-colors group">
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-4">
+                        <div className="h-12 w-12 bg-amber-500/5 border border-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center shrink-0 shadow-inner group-hover:border-amber-500/30 transition-all">
+                          <Package size={22} />
+                        </div>
+                        <span className="font-bold text-white group-hover:text-amber-500 transition-colors text-lg tracking-tight">{p.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <span className="font-mono text-[10px] font-black text-slate-500 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg tracking-widest uppercase">
+                        {p.sku}
+                      </span>
+                    </td>
+                    <td className="px-6 py-5">
+                      <span className="px-3 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                        {p.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-5 font-black text-white text-lg tracking-tighter">{formatCurrency(p.price)}</td>
+                    <td className="px-6 py-5">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "text-xl font-black tracking-tighter tabular-nums",
+                            p.stock <= 10 ? "text-rose-500" : "text-emerald-500"
+                          )}>{p.stock}</span>
+                          <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{p.unit}</span>
+                        </div>
+                        <div className="w-16 h-1 bg-slate-800 rounded-full overflow-hidden">
+                          <div 
+                            className={cn(
+                              "h-full transition-all",
+                              p.stock <= 10 ? "bg-rose-500" : "bg-emerald-500"
+                            )} 
+                            style={{ width: `${Math.min(100, (p.stock / 50) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => {
+                            setEditingProduct(p);
+                            setIsModalOpen(true);
+                          }}
+                          className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-slate-500 hover:text-white hover:border-amber-500 transition-all shadow-lg"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(p.id)}
+                          className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-slate-600 hover:text-rose-500 hover:border-rose-500 transition-all shadow-lg"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-lg bg-[#161B22] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-8 bg-[#0F1218] border-b border-slate-800 flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-black text-white tracking-tight uppercase">
+                    {editingProduct ? 'EDIT PRODUCT' : 'NEW PRODUCT'}
+                  </h3>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-1">
+                    {editingProduct ? 'Update specifications' : 'Catalog entry form'}
+                  </p>
+                </div>
+                <button onClick={() => setIsModalOpen(false)} className="h-10 w-10 flex items-center justify-center rounded-xl bg-slate-900 text-slate-500 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-slate-200">
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Product Description</label>
+                    <input name="name" defaultValue={editingProduct?.name} required className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all placeholder:text-slate-700 font-bold" placeholder="e.g. 3/4 Conceal Stop Cock" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">SKU / Code</label>
+                    <input name="sku" defaultValue={editingProduct?.sku} required className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all placeholder:text-slate-700 font-mono" placeholder="SC-001" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Category</label>
+                    <input name="category" defaultValue={editingProduct?.category} className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all placeholder:text-slate-700" placeholder="Fittings" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Unit Price</label>
+                    <div className="relative">
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 font-bold text-xs">Tk</div>
+                      <input type="number" name="price" step="0.01" defaultValue={editingProduct?.price} required className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl pl-8 pr-4 py-3.5 text-amber-500 font-black text-lg focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all tracking-tighter tabular-nums" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Initial Stock</label>
+                    <input type="number" name="stock" defaultValue={editingProduct?.stock} required className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all font-bold tracking-tight" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Commission Rate (%)</label>
+                    <div className="relative">
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 font-bold text-xs">%</div>
+                      <input type="number" name="commissionRate" step="0.1" defaultValue={editingProduct?.commissionRate || 0} className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-3.5 text-emerald-500 font-black text-lg focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 outline-none transition-all tracking-tighter tabular-nums" />
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Unit of Measurement</label>
+                    <input name="unit" defaultValue={editingProduct?.unit || 'pcs'} className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all font-bold" placeholder="pcs, kg, meters..." />
+                  </div>
+                </div>
+                <div className="pt-4 flex gap-4">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-4 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-500 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all">
+                    Cancel
+                  </button>
+                  <button type="submit" className="flex-1 px-4 py-4 bg-amber-500 hover:bg-amber-600 text-black rounded-xl font-black uppercase tracking-widest text-[10px] transition-all shadow-xl shadow-amber-500/10 active:scale-95">
+                    {editingProduct ? 'Update Product' : 'Register Product'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

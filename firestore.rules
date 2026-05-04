@@ -1,0 +1,210 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == 'admin';
+    }
+
+    function isStaff() {
+      return isSignedIn() && (getUserData().role == 'admin' || getUserData().role == 'staff');
+    }
+
+    // Product Validation
+    function isValidProduct(data) {
+      return data.keys().hasAll(['name', 'sku', 'price', 'stock']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100 &&
+             data.price is number && data.price >= 0 &&
+             data.stock is number && data.stock >= 0 &&
+             (!('commissionRate' in data) || (data.commissionRate is number && data.commissionRate >= 0 && data.commissionRate <= 100));
+    }
+
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidProduct(incoming()) && isValidId(productId);
+      allow update: if isStaff() && isValidProduct(incoming()) && (
+        isAdmin() || (incoming().diff(existing()).affectedKeys().hasOnly(['stock']))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Salesperson Validation
+    function isValidSalesperson(data) {
+      return data.keys().hasAll(['name']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200;
+    }
+
+    match /salespeople/{salespersonId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidSalesperson(incoming()) && isValidId(salespersonId);
+      allow update: if isStaff() && isValidSalesperson(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Customer Validation
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['name']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200;
+    }
+
+    match /customers/{customerId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidCustomer(incoming()) && isValidId(customerId);
+      allow update: if isStaff() && isValidCustomer(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Supplier Validation
+    function isValidSupplier(data) {
+      return data.keys().hasAll(['name']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200;
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidSupplier(incoming()) && isValidId(supplierId);
+      allow update: if isStaff() && isValidSupplier(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Sale Validation
+    function isValidSale(data) {
+      return data.keys().hasAll(['invoiceNumber', 'customerId', 'totalAmount', 'status', 'date']) &&
+             data.invoiceNumber is string && data.invoiceNumber.size() > 0 &&
+             data.customerId is string &&
+             data.totalAmount is number && data.totalAmount >= 0 &&
+             data.status in ['paid', 'partial', 'unpaid'] &&
+             (!('discountPercentage' in data) || data.discountPercentage is number) &&
+             (!('discountValue' in data) || data.discountValue is number) &&
+             (!('salespersonId' in data) || data.salespersonId is string) &&
+             (!('totalCommission' in data) || data.totalCommission is number);
+    }
+
+    match /sales/{saleId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidSale(incoming()) && isValidId(saleId);
+      allow update: if isAdmin() && isValidSale(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Purchase Validation
+    function isValidPurchase(data) {
+      return data.keys().hasAll(['purchaseNumber', 'supplierId', 'totalAmount', 'status', 'date']) &&
+             data.purchaseNumber is string && data.purchaseNumber.size() > 0 &&
+             data.supplierId is string &&
+             data.totalAmount is number && data.totalAmount >= 0 &&
+             data.status in ['paid', 'partial', 'unpaid'];
+    }
+
+    match /purchases/{purchaseId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidPurchase(incoming()) && isValidId(purchaseId);
+      allow update: if isAdmin() && isValidPurchase(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Commission Validation
+    function isValidCommission(data) {
+      return data.keys().hasAll(['salespersonId', 'saleId', 'amount', 'date', 'status']) &&
+             data.salespersonId is string &&
+             data.saleId is string &&
+             data.amount is number &&
+             data.status in ['pending', 'paid'];
+    }
+
+    match /commissions/{commissionId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidCommission(incoming()) && isValidId(commissionId);
+      allow update: if isStaff() && isValidCommission(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Expense Validation
+    function isValidExpense(data) {
+      return data.keys().hasAll(['description', 'amount', 'date', 'status', 'accountId']) &&
+             data.description is string && data.description.size() > 0 &&
+             data.amount is number && data.amount >= 0 &&
+             data.accountId is string &&
+             data.status in ['paid', 'unpaid'];
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidExpense(incoming()) && isValidId(expenseId);
+      allow update: if isAdmin() && isValidExpense(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // UserProfile Validation
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['email', 'role']) &&
+             data.email is string && data.email.size() > 0 &&
+             data.role in ['admin', 'staff'];
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidUserProfile(incoming());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Account Validation
+    function isValidAccount(data) {
+      return data.keys().hasAll(['code', 'name', 'type']) &&
+             data.code is string && data.code.size() > 0 &&
+             data.name is string && data.name.size() > 0 &&
+             data.type in ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
+    }
+
+    match /accounts/{accountId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidAccount(incoming());
+      allow update: if isStaff() && isValidAccount(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // StockAdjustment Validation
+    function isValidStockAdjustment(data) {
+      return data.keys().hasAll(['adjustmentNumber', 'productId', 'quantity', 'type', 'reason', 'date']) &&
+             data.adjustmentNumber is string && data.adjustmentNumber.size() > 0 &&
+             data.productId is string &&
+             data.quantity is number &&
+             data.type in ['addition', 'deduction'] &&
+             data.reason is string && data.reason.size() > 0;
+    }
+
+    match /stockAdjustments/{adjustmentId} {
+      allow read: if isSignedIn();
+      allow create: if isStaff() && isValidStockAdjustment(incoming()) && isValidId(adjustmentId);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}
