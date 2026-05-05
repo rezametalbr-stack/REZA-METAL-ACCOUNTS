@@ -10,7 +10,8 @@ import {
   TrendingDown,
   Clock,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 import { 
   collection, 
@@ -23,6 +24,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, formatDate, handleFirestoreError, OperationType, cn } from '../lib/utils';
+import { downloadCSV } from '../lib/csvExport';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 
@@ -128,6 +130,37 @@ export default function Purchases() {
 
   const totalCart = cartItems.reduce((acc, item) => acc + item.total, 0);
 
+  const filteredPurchases = purchases.filter(p => 
+    p.purchaseNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.supplierName.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleExport = () => {
+    const dataToExport = filteredPurchases.map(p => ({
+      purchaseNumber: p.purchaseNumber,
+      supplierName: p.supplierName,
+      date: p.date ? p.date.toDate().toLocaleString() : 'N/A',
+      totalAmount: p.totalAmount,
+      paidAmount: p.paidAmount,
+      balance: p.totalAmount - p.paidAmount,
+      status: p.status,
+      itemsCount: p.items.length
+    }));
+
+    const headers = {
+      purchaseNumber: 'Purchase #',
+      supplierName: 'Supplier Name',
+      date: 'Date',
+      totalAmount: 'Total Amount (Tk)',
+      paidAmount: 'Paid Amount (Tk)',
+      balance: 'Balance Due (Tk)',
+      status: 'Status',
+      itemsCount: 'Items Count'
+    };
+
+    downloadCSV(dataToExport, 'Purchases_Report', headers);
+  };
+
   const handleCreatePurchase = async () => {
     if (!selectedSupplier || cartItems.length === 0) return;
 
@@ -221,15 +254,24 @@ export default function Purchases() {
       <div className="bg-[#161B22] rounded-[2rem] border border-slate-800 overflow-hidden shadow-2xl">
         <div className="p-8 border-b border-slate-800 flex justify-between items-center">
           <h3 className="text-sm font-black text-white uppercase tracking-widest">Recent Procurement</h3>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
-            <input 
-              type="text" 
-              placeholder="Search purchases..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-[#0B0D11] border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 focus:border-emerald-500 outline-none w-64 transition-all"
-            />
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={handleExport}
+              className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all"
+            >
+              <Download size={14} />
+              <span>Export</span>
+            </button>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+              <input 
+                type="text" 
+                placeholder="Search purchases..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="bg-[#0B0D11] border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 focus:border-emerald-500 outline-none w-64 transition-all"
+              />
+            </div>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -244,10 +286,7 @@ export default function Purchases() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {purchases.filter(p => 
-                p.purchaseNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.supplierName.toLowerCase().includes(searchTerm.toLowerCase())
-              ).map((purchase) => (
+              {filteredPurchases.map((purchase) => (
                 <tr key={purchase.id} className="hover:bg-slate-800/30 transition-colors group">
                   <td className="py-5 px-8">
                     <span className="font-mono text-xs font-bold text-slate-400">{purchase.purchaseNumber}</span>

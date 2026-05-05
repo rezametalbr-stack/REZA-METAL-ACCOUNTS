@@ -28,11 +28,17 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && getUserData().role == 'admin';
+      return isSignedIn() && (
+        request.auth.token.email == 'rezametalbr@gmail.com' || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin')
+      );
     }
 
     function isStaff() {
-      return isSignedIn() && (getUserData().role == 'admin' || getUserData().role == 'staff');
+      return isSignedIn() && (
+        isAdmin() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'staff')
+      );
     }
 
     // Product Validation
@@ -42,6 +48,7 @@ service cloud.firestore {
              data.sku is string && data.sku.size() > 0 && data.sku.size() <= 100 &&
              data.price is number && data.price >= 0 &&
              data.stock is number && data.stock >= 0 &&
+             (!('cost' in data) || data.cost is number) &&
              (!('commissionRate' in data) || (data.commissionRate is number && data.commissionRate >= 0 && data.commissionRate <= 100));
     }
 
@@ -49,7 +56,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isStaff() && isValidProduct(incoming()) && isValidId(productId);
       allow update: if isStaff() && isValidProduct(incoming()) && (
-        isAdmin() || (incoming().diff(existing()).affectedKeys().hasOnly(['stock']))
+        isAdmin() || (incoming().diff(existing()).affectedKeys().hasOnly(['stock', 'cost']))
       );
       allow delete: if isAdmin();
     }
@@ -102,8 +109,8 @@ service cloud.firestore {
              data.status in ['paid', 'partial', 'unpaid'] &&
              (!('discountPercentage' in data) || data.discountPercentage is number) &&
              (!('discountValue' in data) || data.discountValue is number) &&
-             (!('salespersonId' in data) || data.salespersonId is string) &&
-             (!('totalCommission' in data) || data.totalCommission is number);
+             (!('salespersonId' in data) || data.salespersonId == null || data.salespersonId is string) &&
+             (!('totalCommission' in data) || data.totalCommission == null || data.totalCommission is number);
     }
 
     match /sales/{saleId} {
@@ -119,7 +126,9 @@ service cloud.firestore {
              data.purchaseNumber is string && data.purchaseNumber.size() > 0 &&
              data.supplierId is string &&
              data.totalAmount is number && data.totalAmount >= 0 &&
-             data.status in ['paid', 'partial', 'unpaid'];
+             data.status in ['paid', 'partial', 'unpaid'] &&
+             (!('paidAmount' in data) || data.paidAmount is number) &&
+             (!('items' in data) || data.items is list);
     }
 
     match /purchases/{purchaseId} {

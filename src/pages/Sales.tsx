@@ -11,11 +11,13 @@ import {
   Clock,
   AlertCircle,
   X,
-  Trash2
+  Trash2,
+  Download
 } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, doc, getDoc, runTransaction, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, formatDate, cn, handleFirestoreError, OperationType } from '../lib/utils';
+import { downloadCSV } from '../lib/csvExport';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 
@@ -225,6 +227,32 @@ export default function Sales() {
     s.customerName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleExport = () => {
+    const dataToExport = filteredSales.map(s => ({
+      invoiceNumber: s.invoiceNumber,
+      customerName: s.customerName,
+      date: s.date ? s.date.toDate().toLocaleString() : 'N/A',
+      totalAmount: s.totalAmount,
+      paidAmount: s.paidAmount,
+      balance: s.totalAmount - s.paidAmount,
+      status: s.status,
+      itemsCount: s.items.length
+    }));
+    
+    const headers = {
+      invoiceNumber: 'Invoice #',
+      customerName: 'Customer Name',
+      date: 'Date',
+      totalAmount: 'Total Amount (Tk)',
+      paidAmount: 'Paid Amount (Tk)',
+      balance: 'Balance Due (Tk)',
+      status: 'Status',
+      itemsCount: 'Items Count'
+    };
+    
+    downloadCSV(dataToExport, 'Sales_Report', headers);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -254,6 +282,13 @@ export default function Sales() {
             />
           </div>
           <div className="flex items-center gap-2">
+            <button 
+              onClick={handleExport}
+              className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all"
+            >
+              <Download size={14} />
+              <span>Export</span>
+            </button>
             <button className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all">
               <Filter size={14} />
               <span>Status</span>

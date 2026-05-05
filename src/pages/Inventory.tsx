@@ -14,6 +14,7 @@ import {
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, cn, handleFirestoreError, OperationType } from '../lib/utils';
+import { downloadCSV } from '../lib/csvExport';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Product {
@@ -57,6 +58,19 @@ export default function Inventory() {
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleExport = () => {
+    const headers = {
+      name: 'Product Name',
+      sku: 'SKU',
+      category: 'Category',
+      price: 'Unit Price (Tk)',
+      stock: 'Stock',
+      unit: 'Unit',
+      commissionRate: 'Commission Rate (%)'
+    };
+    downloadCSV(filteredProducts, 'Inventory_Catalog', headers);
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -134,7 +148,10 @@ export default function Inventory() {
               <Filter size={14} />
               <span>Filter</span>
             </button>
-            <button className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all">
+            <button 
+              onClick={handleExport}
+              className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all"
+            >
               <Download size={14} />
               <span>Export</span>
             </button>
