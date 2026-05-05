@@ -18,9 +18,12 @@ import {
   ChevronDown,
   Contact,
   BarChart3,
-  BookOpen
+  BookOpen,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { cn } from '../lib/utils';
 
 export default function Layout() {
@@ -31,6 +34,7 @@ export default function Layout() {
   const [accountingOpen, setAccountingOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const { profile, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -112,7 +116,7 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0D11] flex text-slate-200">
+    <div className="min-h-screen bg-[var(--bg-page)] flex text-[var(--text-primary)] transition-colors duration-300">
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div 
@@ -123,16 +127,16 @@ export default function Layout() {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 w-64 bg-[#0F1218] border-r border-slate-800 z-50 transition-transform duration-300 transform lg:translate-x-0 lg:static lg:inset-0",
+        "fixed inset-y-0 left-0 w-64 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] z-50 transition-transform duration-300 transform lg:translate-x-0 lg:static lg:inset-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="h-full flex flex-col">
           <div className="p-6">
             <Link to="/" className="flex items-center gap-3">
-              <div className="h-8 w-8 bg-amber-500 rounded flex items-center justify-center font-bold text-slate-950">
+              <div className="h-8 w-8 bg-amber-500 rounded flex items-center justify-center font-bold text-black shadow-lg">
                 R
               </div>
-              <span className="font-bold text-sm uppercase tracking-tighter text-white">Reza Metal Ind.</span>
+              <span className="font-bold text-sm uppercase tracking-tighter text-[var(--text-primary)]">Reza Metal Ind.</span>
             </Link>
           </div>
 
@@ -232,9 +236,9 @@ export default function Layout() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-[#161B22] border-b border-slate-800 flex items-center justify-between px-6">
+          <header className="h-16 bg-[var(--bg-card)] border-b border-[var(--border-color)] flex items-center justify-between px-6 transition-colors duration-300">
           <button 
-            className="p-2 text-slate-400 lg:hidden hover:text-white"
+            className="p-2 text-[var(--text-secondary)] lg:hidden hover:text-[var(--text-primary)]"
             onClick={() => setSidebarOpen(true)}
           >
             <Menu size={24} />
@@ -243,10 +247,18 @@ export default function Layout() {
           <div className="flex-1" />
           
           <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-4 bg-[#0B0D11] border border-slate-800 px-3 py-1.5 rounded-full">
+            <button 
+              onClick={toggleTheme}
+              className="p-2.5 rounded-xl bg-[var(--bg-page)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all active:scale-95"
+              title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+
+            <div className="hidden sm:flex items-center gap-4 bg-[var(--bg-page)] border border-[var(--border-color)] px-4 py-2 rounded-full">
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">
-                System Ready • Dhaka-01
+              <span className="text-[10px] font-mono text-[var(--text-secondary)] uppercase tracking-widest font-black">
+                System Ready • Dhaka-02
               </span>
             </div>
           </div>

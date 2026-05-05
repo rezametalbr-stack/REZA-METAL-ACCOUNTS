@@ -4,36 +4,58 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --color-brand-primary: #f59e0b; /* Amber 500 */
-  --color-bg-deep: #0b0d11;
-  --color-bg-card: #161b22;
-  --color-bg-sidebar: #0f1218;
-  --color-border-mute: #1e293b; /* Slate 800-ish */
 }
 
 @layer base {
+  :root {
+    --bg-page: #f8fafc;
+    --bg-card: #ffffff;
+    --bg-sidebar: #f1f5f9;
+    --text-primary: #0f172a;
+    --text-secondary: #64748b;
+    --border-color: #e2e8f0;
+    --input-bg: #ffffff;
+  }
+
+  .dark {
+    --bg-page: #0b0d11;
+    --bg-card: #161b22;
+    --bg-sidebar: #0f1218;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --border-color: #1e293b;
+    --input-bg: #0b0d11;
+  }
+
   body {
-    @apply font-sans text-slate-200 bg-[#0B0D11] antialiased;
+    @apply font-sans transition-colors duration-300 antialiased;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
   }
 }
 
-/* Custom scrollbar for a more polished look */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.theme-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  @apply rounded-[2rem] shadow-sm transition-all duration-300;
 }
 
-::-webkit-scrollbar-track {
-  @apply bg-transparent;
+.theme-input {
+  background-color: var(--input-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  @apply rounded-2xl py-4 px-6 outline-none transition-all focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 placeholder:text-slate-500;
 }
 
-::-webkit-scrollbar-thumb {
-  @apply bg-slate-800 rounded-full hover:bg-slate-700 transition-colors;
+/* Update global text styles to be reactive */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-primary);
 }
 
-.dark-card {
-  @apply bg-[#161B22] border border-slate-800 rounded-xl shadow-sm;
+p, span, label {
+  color: var(--text-secondary);
 }
 
-.input-dark {
-  @apply bg-[#0B0D11] border border-slate-700 rounded-lg py-2 px-4 text-sm text-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition-all placeholder:text-slate-600;
+.text-bright {
+  color: var(--text-primary);
 }
