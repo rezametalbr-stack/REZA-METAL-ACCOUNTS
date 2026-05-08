@@ -34,9 +34,11 @@ const data = [
 ];
 
 import { useTheme } from '../contexts/ThemeContext';
+import { useSettings } from '../contexts/SettingsContext';
 
 export default function Dashboard() {
   const { theme } = useTheme();
+  const { settings: businessSettings } = useSettings();
   const [metrics, setMetrics] = useState({
     totalSales: 0,
     totalExpenses: 0,
@@ -80,7 +82,7 @@ export default function Dashboard() {
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-black text-[var(--text-primary)] tracking-tighter">Business Intelligence</h1>
-          <p className="text-[var(--text-secondary)] font-medium mt-1">Real-time health of Reza Metal Industries</p>
+          <p className="text-[var(--text-secondary)] font-medium mt-1">Real-time health of {businessSettings?.businessName || 'Reza Metal Industries'}</p>
         </div>
         <div className="flex gap-3">
           <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center gap-3">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Package, 
   Search, 
@@ -9,13 +9,15 @@ import {
   Trash2,
   Filter,
   Download,
-  X
+  X,
+  Eye
 } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, cn, handleFirestoreError, OperationType } from '../lib/utils';
 import { downloadCSV } from '../lib/csvExport';
 import { motion, AnimatePresence } from 'motion/react';
+import { Link } from 'react-router-dom';
 
 interface Product {
   id: string;
@@ -30,6 +32,7 @@ interface Product {
 
 export default function Inventory() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -219,6 +222,13 @@ export default function Inventory() {
                     </td>
                     <td className="px-6 py-5 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <Link 
+                          to={`/inventory/${p.id}`}
+                          className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-slate-500 hover:text-white hover:border-blue-500 transition-all shadow-lg"
+                          title="View Ledger"
+                        >
+                          <Eye size={16} />
+                        </Link>
                         <button 
                           onClick={() => {
                             setEditingProduct(p);

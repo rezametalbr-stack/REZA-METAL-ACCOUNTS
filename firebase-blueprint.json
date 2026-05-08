@@ -185,9 +185,32 @@
         "performedBy": { "type": "string" }
       },
       "required": ["date", "reference", "description", "lines", "totalAmount"]
+    },
+    "BusinessSettings": {
+      "title": "Business Settings",
+      "description": "Global business configuration and branding",
+      "type": "object",
+      "properties": {
+        "businessName": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "website": { "type": "string" },
+        "taxId": { "type": "string" },
+        "showLogo": { "type": "boolean" },
+        "showAddress": { "type": "boolean" },
+        "showPhone": { "type": "boolean" },
+        "showEmail": { "type": "boolean" },
+        "showWebsite": { "type": "boolean" },
+        "showTaxId": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["businessName"]
     }
   },
   "firestore": {
+    "settings/{settingId}": { "schema": "BusinessSettings", "description": "Global settings (usually 'global' document)" },
     "products/{productId}": { "schema": "Product", "description": "Inventory products collection" },
     "customers/{customerId}": { "schema": "Customer", "description": "Customers collection" },
     "suppliers/{supplierId}": { "schema": "Supplier", "description": "Suppliers collection" },

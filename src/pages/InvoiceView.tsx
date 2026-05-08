@@ -4,10 +4,12 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
 import { Printer, ArrowLeft, Download, Send } from 'lucide-react';
+import { useSettings } from '../contexts/SettingsContext';
 
 export default function InvoiceView() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { settings: businessSettings } = useSettings();
   const [sale, setSale] = useState<any>(null);
   const [customer, setCustomer] = useState<any>(null);
   const [salesperson, setSalesperson] = useState<any>(null);
@@ -81,26 +83,42 @@ export default function InvoiceView() {
           {/* Header */}
           <div className="flex flex-col md:flex-row justify-between items-start gap-8 mb-16 relative">
             <div className="flex gap-6 items-start">
-              <div className="h-20 w-20 bg-amber-500 rounded-[1.5rem] flex items-center justify-center shadow-2xl shadow-amber-500/20 rotate-3 group-hover:rotate-0 transition-transform print:border-4 print:border-amber-500 print:bg-white print:text-amber-500">
-                <span className="text-black font-black text-3xl print:text-amber-500">R</span>
-              </div>
+              {(businessSettings?.showLogo !== false) && (
+                <div className="h-24 w-24 bg-white rounded-[1.5rem] flex items-center justify-center shadow-2xl ring-1 ring-slate-800 transition-transform print:ring-0">
+                  {businessSettings?.logoUrl ? (
+                    <img src={businessSettings.logoUrl} alt="Logo" className="max-h-full object-contain p-2" />
+                  ) : (
+                    <span className="text-black font-black text-4xl print:text-amber-500">
+                      {businessSettings?.businessName?.charAt(0) || 'R'}
+                    </span>
+                  )}
+                </div>
+              )}
               <div>
-                <h1 className="text-4xl font-black text-white tracking-tighter leading-none print:text-black">REZA METAL</h1>
+                <h1 className="text-4xl font-black text-white tracking-tighter leading-none print:text-black uppercase">
+                  {businessSettings?.businessName || 'REZA METAL'}
+                </h1>
                 <p className="text-amber-500 font-black uppercase tracking-[0.4em] text-[10px] mt-1">Industries & Solutions</p>
                 <div className="text-slate-500 text-[10px] space-y-1 mt-6 font-bold uppercase tracking-widest print:text-slate-600">
-                  <p>Corporate HQ: 12 Industrial Zone</p>
-                  <p>Dhaka, Bangladesh</p>
-                  <p>T: +880 1234-567890</p>
-                  <p>W: rezametal-industries.com</p>
+                  {businessSettings?.showAddress !== false && <p>{businessSettings?.address || 'Corporate HQ: 12 Industrial Zone'}</p>}
+                  {businessSettings?.showPhone !== false && <p>T: {businessSettings?.phone || '+880 1234-567890'}</p>}
+                  {(businessSettings?.showEmail !== false && businessSettings?.email) && <p>E: {businessSettings.email}</p>}
+                  {(businessSettings?.showWebsite !== false && businessSettings?.website) && <p>W: {businessSettings.website}</p>}
                 </div>
               </div>
             </div>
             <div className="text-left md:text-right">
               <h2 className="text-5xl font-black text-white uppercase tracking-tighter mb-4 print:text-slate-600">Tax Invoice</h2>
-              <div className="space-y-2">
-                <div className="inline-block bg-[#0B0D11] border border-slate-800 px-4 py-2 rounded-xl print:bg-slate-50 print:border-slate-200">
-                  <p className="text-amber-500 font-mono text-lg font-black tracking-widest">{sale.invoiceNumber}</p>
+              <div className="space-y-4">
+                <div className="inline-block bg-[#0B0D11] border border-slate-800 px-4 py-3 rounded-2xl print:bg-slate-50 print:border-slate-200">
+                  <p className="text-amber-500 font-mono text-xl font-black tracking-[0.2em]">{sale.invoiceNumber}</p>
                 </div>
+                {(businessSettings?.showTaxId !== false && businessSettings?.taxId) && (
+                  <div className="flex flex-col items-start md:items-end">
+                    <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">Business Identification No</span>
+                    <span className="text-xs font-mono font-black text-white print:text-black">{businessSettings.taxId}</span>
+                  </div>
+                )}
                 <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest print:text-slate-400">Computer Generated Document</p>
               </div>
             </div>
@@ -157,7 +175,7 @@ export default function InvoiceView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/50 print:divide-slate-200">
-                {sale.items.map((item: any, index: number) => (
+                {(sale.items || []).map((item: any, index: number) => (
                   <tr key={index} className="bg-[#161B22]/50 print:bg-white transition-colors">
                     <td className="px-6 py-5">
                       <p className="font-black text-white tracking-tight print:text-black uppercase text-sm">{item.name}</p>
@@ -184,7 +202,7 @@ export default function InvoiceView() {
             <div className="w-full max-w-xs space-y-4">
               <div className="flex justify-between text-slate-500 text-[10px] font-black uppercase tracking-widest">
                 <span>Subtotal</span>
-                <span className="text-white print:text-black text-sm">{formatCurrency(sale.items.reduce((acc: number, item: any) => acc + item.total, 0))}</span>
+                <span className="text-white print:text-black text-sm">{formatCurrency((sale.items || []).reduce((acc: number, item: any) => acc + (item.total || 0), 0))}</span>
               </div>
               {(sale.discountPercentage > 0 || sale.discountValue > 0) && (
                 <div className="flex justify-between text-emerald-500 text-[10px] font-black uppercase tracking-widest">
@@ -221,7 +239,9 @@ export default function InvoiceView() {
           </div>
 
           <div className="mt-32 pt-10 border-t border-slate-800/50 text-center space-y-2 print:border-slate-200">
-            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Thank you for your business with Reza Metal Industries.</p>
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
+              Thank you for your business with {businessSettings?.businessName || 'Reza Metal Industries'}.
+            </p>
             <p className="text-slate-700 text-[10px] font-bold uppercase tracking-widest print:text-slate-400">Computer generated document. Valid without physical signature.</p>
           </div>
         </div>

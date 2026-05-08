@@ -230,5 +230,28 @@ service cloud.firestore {
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
+
+    // Settings Validation
+    function isValidSettings(data) {
+      return data.keys().hasAll(['businessName']) &&
+             data.businessName is string && data.businessName.size() > 0 &&
+             (!('logoUrl' in data) || data.logoUrl is string) &&
+             (!('address' in data) || data.address is string) &&
+             (!('phone' in data) || data.phone is string) &&
+             (!('email' in data) || data.email is string) &&
+             (!('website' in data) || data.website is string) &&
+             (!('taxId' in data) || data.taxId is string) &&
+             (!('showLogo' in data) || data.showLogo is bool) &&
+             (!('showAddress' in data) || data.showAddress is bool) &&
+             (!('showPhone' in data) || data.showPhone is bool) &&
+             (!('showEmail' in data) || data.showEmail is bool) &&
+             (!('showWebsite' in data) || data.showWebsite is bool) &&
+             (!('showTaxId' in data) || data.showTaxId is bool);
+    }
+
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && isValidSettings(incoming()) && isValidId(settingId);
+    }
   }
 }

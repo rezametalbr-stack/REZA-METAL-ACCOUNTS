@@ -11,7 +11,10 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  Download
+  Download,
+  Edit2,
+  Trash2,
+  Eye
 } from 'lucide-react';
 import { 
   collection, 
@@ -26,7 +29,7 @@ import { db } from '../lib/firebase';
 import { formatCurrency, formatDate, handleFirestoreError, OperationType, cn } from '../lib/utils';
 import { downloadCSV } from '../lib/csvExport';
 import { motion, AnimatePresence } from 'motion/react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 interface PurchaseItem {
   productId: string;
@@ -53,6 +56,8 @@ export default function Purchases() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
   // For New Purchase Form
@@ -161,6 +166,55 @@ export default function Purchases() {
     downloadCSV(dataToExport, 'Purchases_Report', headers);
   };
 
+  const openEditModal = (purchase: Purchase) => {
+    setIsEditing(true);
+    setEditingId(purchase.id);
+    setSelectedSupplier(purchase.supplierId);
+    setCartItems(purchase.items);
+    setPaidAmount(purchase.paidAmount);
+    setIsModalOpen(true);
+  };
+
+  const handleDeletePurchase = async (purchase: Purchase) => {
+    if (!window.confirm('Are you sure you want to delete this purchase? This will revert stock and supplier balance.')) return;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        // 1. Prepare references and perform ALL reads first
+        const productRefs = purchase.items.map(item => doc(db, 'products', item.productId));
+        const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+        
+        const supplierRef = doc(db, 'suppliers', purchase.supplierId);
+        const supplierSnap = await transaction.get(supplierRef);
+
+        const purchaseRef = doc(db, 'purchases', purchase.id);
+
+        // 2. Perform all writes
+        // Revert Product Stock
+        purchase.items.forEach((item, index) => {
+          const snap = productSnaps[index];
+          if (snap.exists()) {
+            const currentData = snap.data();
+            const newStock = Math.max(0, currentData.stock - item.quantity);
+            transaction.update(productRefs[index], { stock: newStock });
+          }
+        });
+
+        // Revert Supplier Balance
+        if (supplierSnap.exists()) {
+          const currentBalance = supplierSnap.data().balance || 0;
+          const unpaidAmount = purchase.totalAmount - purchase.paidAmount;
+          transaction.update(supplierRef, { balance: Math.max(0, currentBalance - unpaidAmount) });
+        }
+
+        // Delete Purchase
+        transaction.delete(purchaseRef);
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `purchases/${purchase.id}`);
+    }
+  };
+
   const handleCreatePurchase = async () => {
     if (!selectedSupplier || cartItems.length === 0) return;
 
@@ -170,19 +224,67 @@ export default function Purchases() {
 
     try {
       await runTransaction(db, async (transaction) => {
+        // Mode specific setup
+        let oldPurchase: Purchase | null = null;
+        if (isEditing && editingId) {
+          const oldRef = doc(db, 'purchases', editingId);
+          const oldSnap = await transaction.get(oldRef);
+          if (oldSnap.exists()) {
+            oldPurchase = { id: oldSnap.id, ...oldSnap.data() } as Purchase;
+          }
+        }
+
         // 1. Prepare references and perform ALL reads first
         const productRefs = cartItems.map(item => doc(db, 'products', item.productId));
-        const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+        // Add old product refs if editing and different
+        const allProductIds = new Set(cartItems.map(i => i.productId));
+        if (oldPurchase) {
+          oldPurchase.items.forEach(i => allProductIds.add(i.productId));
+        }
+        
+        const uniqueProductRefs = Array.from(allProductIds).map(id => doc(db, 'products', id as string));
+        const productSnaps = await Promise.all(uniqueProductRefs.map(ref => transaction.get(ref)));
+        const productSnapMap = new Map(uniqueProductRefs.map((ref, idx) => [ref.id, productSnaps[idx]]));
         
         const supplierRef = doc(db, 'suppliers', selectedSupplier);
         const supplierSnap = await transaction.get(supplierRef);
 
-        // 2. Perform all writes after reads
-        const purchaseRef = collection(db, 'purchases');
-        const purNum = `PUR-${Date.now().toString().slice(-6)}`;
-        const purchaseDocRef = doc(purchaseRef);
+        // If editing and supplier changed, need to read old supplier too
+        let oldSupplierSnap = null;
+        if (oldPurchase && oldPurchase.supplierId !== selectedSupplier) {
+          const oldSupplierRef = doc(db, 'suppliers', oldPurchase.supplierId);
+          oldSupplierSnap = await transaction.get(oldSupplierRef);
+        }
+
+        // 2. Perform writes
         
-        const newPurchase = {
+        // Revert Old Purchase effects if editing
+        if (oldPurchase) {
+          // Revert stock
+          oldPurchase.items.forEach(item => {
+            const snap = productSnapMap.get(item.productId);
+            if (snap?.exists()) {
+              const currentStock = snap.data().stock;
+              // We'll update the actual value later in the "Apply New Purchase" section
+              // but we need to track the intermediate stock value in our map if multiple items refer to same product
+            }
+          });
+
+          // Revert supplier balance
+          if (oldPurchase.supplierId === selectedSupplier) {
+            // Updated later in the same supplier update
+          } else if (oldSupplierSnap?.exists()) {
+             const oldUnpaid = oldPurchase.totalAmount - oldPurchase.paidAmount;
+             const oldRef = doc(db, 'suppliers', oldPurchase.supplierId);
+             transaction.update(oldRef, { balance: Math.max(0, oldSupplierSnap.data().balance - oldUnpaid) });
+          }
+        }
+
+        // Apply New/Updated Purchase
+        const purchaseRef = isEditing && editingId ? doc(db, 'purchases', editingId) : doc(collection(db, 'purchases'));
+        const purNum = isEditing && oldPurchase ? oldPurchase.purchaseNumber : `PUR-${Date.now().toString().slice(-6)}`;
+        
+        const newPurchaseData = {
           purchaseNumber: purNum,
           supplierId: selectedSupplier,
           supplierName: supplier.name,
@@ -190,33 +292,45 @@ export default function Purchases() {
           totalAmount: totalCart,
           paidAmount: paidAmount,
           status: status,
-          date: Timestamp.now()
+          date: isEditing && oldPurchase ? oldPurchase.date : Timestamp.now()
         };
 
-        // Add Purchase
-        transaction.set(purchaseDocRef, newPurchase);
+        transaction.set(purchaseRef, newPurchaseData);
 
         // Update Product Stock and Cost
-        cartItems.forEach((item, index) => {
-          const snap = productSnaps[index];
-          if (snap.exists()) {
-            const newStock = snap.data().stock + item.quantity;
-            // Update stock and update cost to the latest purchase cost
-            transaction.update(productRefs[index], { 
-              stock: newStock,
-              cost: item.cost 
+        // Strategy: Calculate net change
+        const stockChanges = new Map<string, number>();
+        if (oldPurchase) {
+          oldPurchase.items.forEach(i => stockChanges.set(i.productId, (stockChanges.get(i.productId) || 0) - i.quantity));
+        }
+        cartItems.forEach(i => stockChanges.set(i.productId, (stockChanges.get(i.productId) || 0) + i.quantity));
+
+        stockChanges.forEach((change, productId) => {
+          const snap = productSnapMap.get(productId);
+          if (snap?.exists()) {
+            const item = cartItems.find(ci => ci.productId === productId);
+            const pRef = doc(db, 'products', productId as string);
+            transaction.update(pRef, {
+              stock: Math.max(0, snap.data().stock + change),
+              ...(item ? { cost: item.cost } : {})
             });
           }
         });
 
         // Update Supplier Balance
         if (supplierSnap.exists()) {
-          const existingBalance = supplierSnap.data().balance || 0;
-          transaction.update(supplierRef, { balance: existingBalance + remainingBalance });
+          let balanceAdj = remainingBalance;
+          if (oldPurchase && oldPurchase.supplierId === selectedSupplier) {
+            const oldUnpaid = oldPurchase.totalAmount - oldPurchase.paidAmount;
+            balanceAdj = remainingBalance - oldUnpaid;
+          }
+          transaction.update(supplierRef, { balance: Math.max(0, supplierSnap.data().balance + balanceAdj) });
         }
       });
 
       setIsModalOpen(false);
+      setIsEditing(false);
+      setEditingId(null);
       setCartItems([]);
       setSelectedSupplier('');
       setPaidAmount(0);
@@ -241,7 +355,14 @@ export default function Purchases() {
         
         <div className="flex flex-wrap items-center gap-4">
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setIsEditing(false);
+              setEditingId(null);
+              setSelectedSupplier('');
+              setCartItems([]);
+              setPaidAmount(0);
+              setIsModalOpen(true);
+            }}
             className="bg-emerald-500 hover:bg-emerald-600 text-black font-black uppercase tracking-widest text-[10px] px-8 py-4 rounded-2xl transition-all flex items-center gap-3 shadow-xl shadow-emerald-500/10 active:scale-95"
           >
             <Plus size={16} strokeWidth={3} />
@@ -283,6 +404,7 @@ export default function Purchases() {
                 <th className="text-left py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Date</th>
                 <th className="text-right py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Total</th>
                 <th className="text-center py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Status</th>
+                <th className="text-right py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
@@ -315,6 +437,29 @@ export default function Purchases() {
                       </span>
                     </div>
                   </td>
+                  <td className="py-5 px-8 text-right">
+                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Link 
+                        to={`/purchases/${purchase.id}`}
+                        className="p-2 text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg transition-all"
+                        title="View Purchase Bill"
+                      >
+                         <Eye size={16} />
+                      </Link>
+                      <button 
+                        onClick={() => openEditModal(purchase)}
+                        className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-all"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeletePurchase(purchase)}
+                        className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -337,8 +482,12 @@ export default function Purchases() {
                   <ShoppingBag size={20} strokeWidth={2.5} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-black text-white tracking-tight">Record Procurement</h2>
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">New Stock Intake Session</p>
+                  <h2 className="text-lg font-black text-white tracking-tight">
+                    {isEditing ? 'Modify Purchase' : 'Record Procurement'}
+                  </h2>
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                    {isEditing ? `Editing ${purchases.find(p => p.id === editingId)?.purchaseNumber}` : 'New Stock Intake Session'}
+                  </p>
                 </div>
               </div>
               <button 
@@ -478,7 +627,7 @@ export default function Purchases() {
                     disabled={!selectedSupplier || cartItems.length === 0}
                     className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 disabled:text-slate-600 text-black font-black uppercase tracking-widest text-[10px] py-5 rounded-2xl transition-all shadow-xl shadow-emerald-500/10 active:scale-95"
                   >
-                    Confirm & Update stock
+                    {isEditing ? 'Update Purchase Record' : 'Confirm & Update stock'}
                   </button>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -6,7 +6,7 @@ import {
   Users, 
   ShoppingCart, 
   Receipt, 
-  Settings, 
+  Settings as SettingsIcon, 
   LogOut,
   Truck,
   ShoppingBag,
@@ -24,33 +24,24 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { cn } from '../lib/utils';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [contactsOpen, setContactsOpen] = useState(false);
-  const [productsOpen, setProductsOpen] = useState(false);
   const [purchasesOpen, setPurchasesOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const { profile, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { settings: businessSettings } = useSettings();
   const location = useLocation();
   const navigate = useNavigate();
 
   const menuItems = [
     { name: 'Dashboard', icon: LayoutDashboard, path: '/' },
-    { 
-      name: 'Products', 
-      icon: Package, 
-      isNested: true,
-      isOpen: productsOpen,
-      setOpen: setProductsOpen,
-      subItems: [
-        { name: 'List Products', path: '/inventory' },
-        { name: 'Add Product', path: '/inventory?add=true' }
-      ]
-    },
+    { name: 'Inventory', icon: Package, path: '/inventory' },
     { 
       name: 'Purchases', 
       icon: ShoppingBag, 
@@ -108,6 +99,7 @@ export default function Layout() {
         { name: 'Sale Payment', path: '/reports/sale-payment' }
       ]
     },
+    { name: 'Settings', icon: SettingsIcon, path: '/settings' },
   ];
 
   const handleLogout = async () => {
@@ -133,10 +125,25 @@ export default function Layout() {
         <div className="h-full flex flex-col">
           <div className="p-6">
             <Link to="/" className="flex items-center gap-3">
-              <div className="h-8 w-8 bg-amber-500 rounded flex items-center justify-center font-bold text-black shadow-lg">
-                R
+              {businessSettings?.logoUrl ? (
+                <div className="h-10 w-10 flex items-center justify-center p-1 bg-white rounded-xl shadow-lg ring-1 ring-slate-800">
+                  <img src={businessSettings.logoUrl} alt="Logo" className="max-h-full object-contain" />
+                </div>
+              ) : (
+                <div className="h-8 w-8 bg-amber-500 rounded flex items-center justify-center font-bold text-black shadow-lg">
+                  {businessSettings?.businessName?.charAt(0) || 'R'}
+                </div>
+              )}
+              <div className="flex flex-col">
+                <span className="font-black text-sm uppercase tracking-tighter text-[var(--text-primary)] leading-tight">
+                  {businessSettings?.businessName || 'Reza Metal Ind.'}
+                </span>
+                {businessSettings?.taxId && (
+                  <span className="text-[8px] text-slate-500 font-bold tracking-widest uppercase">
+                    BIN: {businessSettings.taxId}
+                  </span>
+                )}
               </div>
-              <span className="font-bold text-sm uppercase tracking-tighter text-[var(--text-primary)]">Reza Metal Ind.</span>
             </Link>
           </div>
 

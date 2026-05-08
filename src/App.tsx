@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { SettingsProvider } from './contexts/SettingsContext';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
@@ -12,11 +13,14 @@ import Salespeople from './pages/Salespeople';
 import Commissions from './pages/Commissions';
 import Suppliers from './pages/Suppliers';
 import Purchases from './pages/Purchases';
+import ProductDetails from './pages/ProductDetails';
+import PurchaseView from './pages/PurchaseView';
 import Reports from './pages/Reports';
 import StockAdjustmentReport from './pages/StockAdjustmentReport';
 import ChartOfAccounts from './pages/ChartOfAccounts';
 import JournalEntries from './pages/JournalEntries';
 import InvoiceView from './pages/InvoiceView';
+import Settings from './pages/Settings';
 import Login from './pages/Login';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -43,6 +47,8 @@ function AppContent() {
           <Route path="commissions" element={<Commissions />} />
           <Route path="suppliers" element={<Suppliers />} />
           <Route path="purchases" element={<Purchases />} />
+          <Route path="purchases/:id" element={<PurchaseView />} />
+          <Route path="inventory/:id" element={<ProductDetails />} />
           
           {/* Report Routes */}
           <Route path="reports/profit-loss" element={<Reports />} />
@@ -61,6 +67,7 @@ function AppContent() {
           <Route path="accounting/journal-entries" element={<JournalEntries />} />
           
           <Route path="invoice/:id" element={<InvoiceView />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </Router>
@@ -71,7 +78,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <AppContent />
+        <SettingsProvider>
+          <AppContent />
+        </SettingsProvider>
       </AuthProvider>
     </ThemeProvider>
   );
