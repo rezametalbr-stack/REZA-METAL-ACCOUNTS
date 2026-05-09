@@ -3,8 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
-import { Printer, ArrowLeft, Download, Send } from 'lucide-react';
+import { Printer, ArrowLeft, Download } from 'lucide-react';
 import { useSettings } from '../contexts/SettingsContext';
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
 
 export default function InvoiceView() {
   const { id } = useParams();
@@ -13,6 +15,7 @@ export default function InvoiceView() {
   const [sale, setSale] = useState<any>(null);
   const [customer, setCustomer] = useState<any>(null);
   const [salesperson, setSalesperson] = useState<any>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -46,6 +49,38 @@ export default function InvoiceView() {
     window.print();
   };
 
+  const handleExportPDF = async () => {
+    if (!sale) return;
+    const element = document.getElementById('invoice-content');
+    if (!element) return;
+
+    setExporting(true);
+    
+    const opt = {
+      margin: [10, 10, 10, 10] as [number, number, number, number],
+      filename: `Invoice_${sale.invoiceNumber}.pdf`,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { 
+        scale: 2,
+        useCORS: true,
+        letterRendering: true,
+        backgroundColor: '#ffffff'
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+    };
+
+    try {
+      // Add a temporary class for PDF styling if needed
+      element.classList.add('exporting-pdf');
+      await html2pdf().set(opt).from(element).save();
+      element.classList.remove('exporting-pdf');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (!sale) return (
     <div className="flex flex-col items-center justify-center h-full space-y-4">
       <div className="h-12 w-12 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin"></div>
@@ -64,9 +99,17 @@ export default function InvoiceView() {
           Back to Ledger
         </button>
         <div className="flex gap-4">
-          <button className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-400 hover:text-white font-black uppercase tracking-widest text-[10px] transition-all">
-            <Download size={16} />
-            Export PDF
+          <button 
+            onClick={handleExportPDF}
+            disabled={exporting}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-400 hover:text-white font-black uppercase tracking-widest text-[10px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? (
+              <div className="h-4 w-4 border-2 border-slate-400/20 border-t-slate-400 rounded-full animate-spin"></div>
+            ) : (
+              <Download size={16} />
+            )}
+            {exporting ? 'Processing...' : 'Export PDF'}
           </button>
           <button 
             onClick={handlePrint}
@@ -108,56 +151,30 @@ export default function InvoiceView() {
               </div>
             </div>
             <div className="text-left md:text-right">
-              <h2 className="text-5xl font-black text-white uppercase tracking-tighter mb-4 print:text-slate-600">Tax Invoice</h2>
+              <h2 className="text-5xl font-black text-white uppercase tracking-tighter mb-4 print:text-slate-600">Invoice</h2>
               <div className="space-y-4">
-                <div className="inline-block bg-[#0B0D11] border border-slate-800 px-4 py-3 rounded-2xl print:bg-slate-50 print:border-slate-200">
-                  <p className="text-amber-500 font-mono text-xl font-black tracking-[0.2em]">{sale.invoiceNumber}</p>
+                <div className="flex flex-col items-start md:items-end gap-1">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Invoice Number</span>
+                  <p className="text-amber-500 font-mono text-2xl font-black tracking-tight">{sale.invoiceNumber}</p>
                 </div>
-                {(businessSettings?.showTaxId !== false && businessSettings?.taxId) && (
-                  <div className="flex flex-col items-start md:items-end">
-                    <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">Business Identification No</span>
-                    <span className="text-xs font-mono font-black text-white print:text-black">{businessSettings.taxId}</span>
-                  </div>
-                )}
-                <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest print:text-slate-400">Computer Generated Document</p>
+                <div className="flex flex-col items-start md:items-end gap-1">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Billing Date</span>
+                  <p className="text-white font-black tracking-widest print:text-black text-sm">{sale.date ? formatDate(sale.date.toDate()) : 'N/A'}</p>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Details */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-16 px-1">
-            <div className="bg-[#0B0D11]/30 p-8 rounded-3xl border border-slate-800/50 print:bg-slate-50 print:border-slate-200">
+          <div className="flex flex-col md:flex-row justify-end mb-16 px-1">
+            <div className="w-full md:w-1/2 bg-[#0B0D11]/30 p-8 rounded-3xl border border-slate-800/50 print:bg-slate-50 print:border-slate-200">
               <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] mb-4">Invoice To</p>
               <div className="text-white print:text-black">
-                <p className="font-black text-3xl tracking-tight mb-2 uppercase">{sale.customerName}</p>
+                <p className="font-black text-2xl tracking-tight mb-2 uppercase">{sale.customerName}</p>
                 <div className="text-sm text-slate-400 space-y-1.5 mt-4 font-medium print:text-slate-600">
                   <p className="flex items-start gap-2 max-w-xs">{customer?.address || 'No Address Provided'}</p>
                   <p className="pt-2">Contact: {customer?.phone || 'No Phone'}</p>
                   <p>{customer?.email || 'No Email'}</p>
-                </div>
-              </div>
-            </div>
-            <div className="text-left md:text-right py-4">
-              <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.2em] mb-6 print:text-slate-400">Accounting Summary</p>
-              <div className="space-y-4">
-                <div className="flex justify-start md:justify-end gap-10">
-                  <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Issue Date</span>
-                  <span className="text-white font-black tracking-widest print:text-black text-sm">{sale.date ? formatDate(sale.date.toDate()) : 'N/A'}</span>
-                </div>
-                <div className="flex justify-start md:justify-end gap-10">
-                  <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Due Date</span>
-                  <span className="text-amber-500 font-black tracking-widest print:text-amber-600 text-sm">
-                    {sale.date ? formatDate(new Date(sale.date.toDate().getTime() + 30 * 24 * 60 * 60 * 1000)) : 'N/A'}
-                  </span>
-                </div>
-                <div className="flex justify-start md:justify-end gap-10 items-center">
-                  <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Payment Status</span>
-                  <span className={cn(
-                    "font-black uppercase text-[10px] px-4 py-1.5 rounded-full border tracking-widest",
-                    sale.status === 'paid' ? "text-emerald-500 border-emerald-500/20 bg-emerald-500/5 print:text-emerald-700" :
-                    sale.status === 'partial' ? "text-amber-500 border-amber-500/20 bg-amber-500/5 print:text-amber-700" :
-                    "text-rose-500 border-rose-500/20 bg-rose-500/5 print:text-rose-700"
-                  )}>{sale.status}</span>
                 </div>
               </div>
             </div>
@@ -202,25 +219,50 @@ export default function InvoiceView() {
             <div className="w-full max-w-xs space-y-4">
               <div className="flex justify-between text-slate-500 text-[10px] font-black uppercase tracking-widest">
                 <span>Subtotal</span>
-                <span className="text-white print:text-black text-sm">{formatCurrency((sale.items || []).reduce((acc: number, item: any) => acc + (item.total || 0), 0))}</span>
+                <span className="text-white print:text-black text-sm font-bold">{formatCurrency((sale.items || []).reduce((acc: number, item: any) => acc + (item.total || 0), 0))}</span>
               </div>
-              {(sale.discountPercentage > 0 || sale.discountValue > 0) && (
+              
+              {sale.discountValue > 0 && (
                 <div className="flex justify-between text-emerald-500 text-[10px] font-black uppercase tracking-widest">
-                  <span>Discount {sale.discountPercentage > 0 ? `(${sale.discountPercentage}%)` : ''}</span>
-                  <span className="text-emerald-500 print:text-emerald-600 text-sm">-{formatCurrency(sale.discountValue || 0)}</span>
+                  <span>Discount 1 {sale.discountPercentage > 0 ? `(${sale.discountPercentage}%)` : ''}</span>
+                  <span className="text-emerald-500 print:text-emerald-600 text-sm">-{formatCurrency(sale.discountValue)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                <span>Total Amount</span>
-                <span className="text-white print:text-black text-sm font-bold">{formatCurrency(sale.totalAmount)}</span>
-              </div>
+
+              {sale.discount2Value > 0 && (
+                <div className="flex justify-between text-emerald-500 text-[10px] font-black uppercase tracking-widest">
+                  <span>Discount 2 {sale.discount2Percentage > 0 ? `(${sale.discount2Percentage}%)` : ''}</span>
+                  <span className="text-emerald-500 print:text-emerald-600 text-sm">-{formatCurrency(sale.discount2Value)}</span>
+                </div>
+              )}
+              
               <div className="flex justify-between text-slate-500 text-[10px] font-black uppercase tracking-widest pt-2 border-t border-slate-800/50 print:border-slate-200">
-                <span>Settled Amount</span>
+                <span>Total Bill</span>
+                <span className="text-white print:text-black text-sm font-black">{formatCurrency(sale.totalAmount)}</span>
+              </div>
+
+              <div className="flex justify-between text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                <span>Paid Amount</span>
                 <span className="text-white print:text-black text-sm">{formatCurrency(sale.paidAmount)}</span>
               </div>
+
+              <div className="flex justify-between text-rose-500 text-[10px] font-black uppercase tracking-widest">
+                <span>Current Due</span>
+                <span className="text-rose-500 print:text-rose-600 text-sm font-bold">{formatCurrency(sale.totalAmount - sale.paidAmount)}</span>
+              </div>
+
+              {sale.previousBalance !== undefined && (
+                <div className="flex justify-between text-slate-500 text-[10px] font-black uppercase tracking-widest pt-2 border-t border-slate-800/50 print:border-slate-200">
+                  <span>Previous Due</span>
+                  <span className="text-white print:text-black text-sm">{formatCurrency(sale.previousBalance)}</span>
+                </div>
+              )}
+
               <div className="flex justify-between items-center pt-6 border-t-2 border-slate-800 print:border-slate-900">
-                <span className="text-xs font-black text-amber-500 uppercase tracking-[0.2em]">Net Balance Due</span>
-                <span className="text-3xl font-black text-white tracking-tighter print:text-black tabular-nums">{formatCurrency(sale.totalAmount - sale.paidAmount)}</span>
+                <span className="text-xs font-black text-amber-500 uppercase tracking-[0.2em]">Final Total Due</span>
+                <span className="text-3xl font-black text-white tracking-tighter print:text-black tabular-nums">
+                  {formatCurrency((sale.totalAmount - sale.paidAmount) + (sale.previousBalance || 0))}
+                </span>
               </div>
             </div>
           </div>
@@ -242,7 +284,6 @@ export default function InvoiceView() {
             <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
               Thank you for your business with {businessSettings?.businessName || 'Reza Metal Industries'}.
             </p>
-            <p className="text-slate-700 text-[10px] font-bold uppercase tracking-widest print:text-slate-400">Computer generated document. Valid without physical signature.</p>
           </div>
         </div>
       </div>
@@ -260,6 +301,52 @@ export default function InvoiceView() {
             box-shadow: none !important;
           }
         }
+        
+        /* PDF Export Styles */
+        .exporting-pdf {
+          background-color: white !important;
+          color: #000000 !important;
+        }
+        .exporting-pdf * {
+          color: #000000 !important;
+          border-color: #e2e8f0 !important; /* slate-200 */
+          background-color: transparent !important;
+        }
+        
+        /* Specific overrides for common Tailwind v4 oklch colors */
+        .exporting-pdf .text-amber-500 { color: #f59e0b !important; }
+        .exporting-pdf .text-emerald-500 { color: #10b981 !important; }
+        .exporting-pdf .text-slate-400 { color: #94a3b8 !important; }
+        .exporting-pdf .text-slate-500 { color: #64748b !important; }
+        .exporting-pdf .text-slate-600 { color: #475569 !important; }
+        .exporting-pdf .text-slate-700 { color: #334155 !important; }
+        
+        .exporting-pdf .bg-[#0B0D11],
+        .exporting-pdf .bg-[#0B0D11]\/30 { 
+          background-color: #f8fafc !important; 
+        }
+        
+        .exporting-pdf th {
+          background-color: #f1f5f9 !important; /* slate-100 */
+          color: #475569 !important; /* slate-600 */
+        }
+        
+        .exporting-pdf .tabular-nums {
+          font-variant-numeric: tabular-nums;
+        }
+
+        /* Ensure borders are visible */
+        .exporting-pdf .border,
+        .exporting-pdf .border-t,
+        .exporting-pdf .border-b,
+        .exporting-pdf .border-l,
+        .exporting-pdf .border-r {
+          border-style: solid !important;
+          border-color: #e2e8f0 !important;
+        }
+
+        .exporting-pdf .border-amber-500 { border-color: #f59e0b !important; }
+        .exporting-pdf .border-emerald-500 { border-color: #10b981 !important; }
       `}} />
     </div>
   );

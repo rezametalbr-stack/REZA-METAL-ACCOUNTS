@@ -144,7 +144,7 @@ export default function Purchases() {
     const dataToExport = filteredPurchases.map(p => ({
       purchaseNumber: p.purchaseNumber,
       supplierName: p.supplierName,
-      date: p.date ? p.date.toDate().toLocaleString() : 'N/A',
+      date: p.date ? (typeof p.date.toDate === 'function' ? p.date.toDate().toLocaleString() : new Date(p.date).toLocaleString()) : 'N/A',
       totalAmount: p.totalAmount,
       paidAmount: p.paidAmount,
       balance: p.totalAmount - p.paidAmount,
@@ -200,11 +200,16 @@ export default function Purchases() {
           }
         });
 
-        // Revert Supplier Balance
+        // Revert Supplier Balance and Total Paid
         if (supplierSnap.exists()) {
-          const currentBalance = supplierSnap.data().balance || 0;
+          const currentData = supplierSnap.data();
+          const currentBalance = currentData.balance || 0;
+          const currentTotalPaid = currentData.totalPaid || 0;
           const unpaidAmount = purchase.totalAmount - purchase.paidAmount;
-          transaction.update(supplierRef, { balance: Math.max(0, currentBalance - unpaidAmount) });
+          transaction.update(supplierRef, { 
+            balance: Math.max(0, currentBalance - unpaidAmount),
+            totalPaid: Math.max(0, currentTotalPaid - purchase.paidAmount)
+          });
         }
 
         // Delete Purchase
@@ -317,14 +322,22 @@ export default function Purchases() {
           }
         });
 
-        // Update Supplier Balance
+        // Update Supplier Balance and Total Paid
         if (supplierSnap.exists()) {
+          const currentSupplierData = supplierSnap.data();
           let balanceAdj = remainingBalance;
+          let paidAdj = paidAmount;
+          
           if (oldPurchase && oldPurchase.supplierId === selectedSupplier) {
             const oldUnpaid = oldPurchase.totalAmount - oldPurchase.paidAmount;
             balanceAdj = remainingBalance - oldUnpaid;
+            paidAdj = paidAmount - oldPurchase.paidAmount;
           }
-          transaction.update(supplierRef, { balance: Math.max(0, supplierSnap.data().balance + balanceAdj) });
+          
+          transaction.update(supplierRef, { 
+            balance: Math.max(0, currentSupplierData.balance + balanceAdj),
+            totalPaid: (currentSupplierData.totalPaid || 0) + paidAdj
+          });
         }
       });
 

@@ -21,11 +21,13 @@
       "description": "Clients of Reza Metal Industries",
       "type": "object",
       "properties": {
+        "contactId": { "type": "string" },
         "name": { "type": "string" },
         "phone": { "type": "string" },
         "email": { "type": "string" },
         "address": { "type": "string" },
         "totalPurchased": { "type": "number" },
+        "totalPaid": { "type": "number" },
         "balance": { "type": "number", "description": "Outstanding amount to be paid by customer" }
       },
       "required": ["name"]
@@ -35,10 +37,12 @@
       "description": "Suppliers providing materials to Reza Metal Industries",
       "type": "object",
       "properties": {
+        "contactId": { "type": "string" },
         "name": { "type": "string" },
         "phone": { "type": "string" },
         "email": { "type": "string" },
         "address": { "type": "string" },
+        "totalPaid": { "type": "number" },
         "balance": { "type": "number", "description": "Outstanding amount to be paid to supplier" }
       },
       "required": ["name"]

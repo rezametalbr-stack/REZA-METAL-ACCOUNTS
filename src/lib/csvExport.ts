@@ -18,8 +18,9 @@ export function downloadCSV(data: any[], filename: string, headers?: Record<stri
       let val = row[key];
       
       // Handle Firebase Timestamps or Dates
-      if (val && typeof val === 'object' && val.toDate) {
-        val = val.toDate().toLocaleString();
+      if (val && typeof val === 'object' && typeof val.toDate === 'function') {
+        const d = val.toDate();
+        val = d ? d.toLocaleString() : '';
       } else if (val instanceof Date) {
         val = val.toLocaleString();
       }

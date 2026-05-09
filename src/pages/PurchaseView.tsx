@@ -3,8 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
-import { Printer, ArrowLeft, Download, ShoppingBag, Truck, Calendar } from 'lucide-react';
+import { Printer, ArrowLeft, Download } from 'lucide-react';
 import { useSettings } from '../contexts/SettingsContext';
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
 
 export default function PurchaseView() {
   const { id } = useParams();
@@ -12,6 +14,7 @@ export default function PurchaseView() {
   const { settings: businessSettings } = useSettings();
   const [purchase, setPurchase] = useState<any>(null);
   const [supplier, setSupplier] = useState<any>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -37,6 +40,37 @@ export default function PurchaseView() {
     window.print();
   };
 
+  const handleExportPDF = async () => {
+    if (!purchase) return;
+    const element = document.getElementById('invoice-content');
+    if (!element) return;
+
+    setExporting(true);
+    
+    const opt = {
+      margin: [10, 10, 10, 10] as [number, number, number, number],
+      filename: `Purchase_${purchase.purchaseNumber}.pdf`,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { 
+        scale: 2,
+        useCORS: true,
+        letterRendering: true,
+        backgroundColor: '#ffffff'
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+    };
+
+    try {
+      element.classList.add('exporting-pdf');
+      await html2pdf().set(opt).from(element).save();
+      element.classList.remove('exporting-pdf');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (!purchase) return (
     <div className="flex flex-col items-center justify-center h-full space-y-4">
       <div className="h-12 w-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin"></div>
@@ -55,9 +89,17 @@ export default function PurchaseView() {
           Back to Procurement
         </button>
         <div className="flex gap-4">
-          <button className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-400 hover:text-white font-black uppercase tracking-widest text-[10px] transition-all">
-            <Download size={16} />
-            Export PDF
+          <button 
+            onClick={handleExportPDF}
+            disabled={exporting}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-400 hover:text-white font-black uppercase tracking-widest text-[10px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? (
+              <div className="h-4 w-4 border-2 border-slate-400/20 border-t-slate-400 rounded-full animate-spin"></div>
+            ) : (
+              <Download size={16} />
+            )}
+            {exporting ? 'Processing...' : 'Export PDF'}
           </button>
           <button 
             onClick={handlePrint}
@@ -210,6 +252,52 @@ export default function PurchaseView() {
             box-shadow: none !important;
           }
         }
+
+        /* PDF Export Styles */
+        .exporting-pdf {
+          background-color: white !important;
+          color: #000000 !important;
+        }
+        .exporting-pdf * {
+          color: #000000 !important;
+          border-color: #e2e8f0 !important; /* slate-200 */
+          background-color: transparent !important;
+        }
+        
+        /* Specific overrides for common Tailwind v4 oklch colors */
+        .exporting-pdf .text-amber-500 { color: #f59e0b !important; }
+        .exporting-pdf .text-emerald-500 { color: #10b981 !important; }
+        .exporting-pdf .text-slate-400 { color: #94a3b8 !important; }
+        .exporting-pdf .text-slate-500 { color: #64748b !important; }
+        .exporting-pdf .text-slate-600 { color: #475569 !important; }
+        .exporting-pdf .text-slate-700 { color: #334155 !important; }
+        
+        .exporting-pdf .bg-[#0B0D11],
+        .exporting-pdf .bg-[#0B0D11]\/30 { 
+          background-color: #f8fafc !important; 
+        }
+        
+        .exporting-pdf th {
+          background-color: #f1f5f9 !important; /* slate-100 */
+          color: #475569 !important; /* slate-600 */
+        }
+        
+        .exporting-pdf .tabular-nums {
+          font-variant-numeric: tabular-nums;
+        }
+
+        /* Ensure borders are visible */
+        .exporting-pdf .border,
+        .exporting-pdf .border-t,
+        .exporting-pdf .border-b,
+        .exporting-pdf .border-l,
+        .exporting-pdf .border-r {
+          border-style: solid !important;
+          border-color: #e2e8f0 !important;
+        }
+
+        .exporting-pdf .border-amber-500 { border-color: #f59e0b !important; }
+        .exporting-pdf .border-emerald-500 { border-color: #10b981 !important; }
       `}} />
     </div>
   );

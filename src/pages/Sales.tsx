@@ -38,6 +38,8 @@ interface Sale {
   totalAmount: number;
   discountPercentage?: number;
   discountValue?: number;
+  discount2Percentage?: number;
+  discount2Value?: number;
   paidAmount: number;
   status: 'paid' | 'partial' | 'unpaid';
   salespersonId?: string;
@@ -61,6 +63,7 @@ export default function Sales() {
   const [cartItems, setCartItems] = useState<SaleItem[]>([]);
   const [paidAmount, setPaidAmount] = useState(0);
   const [discountPercentage, setDiscountPercentage] = useState(0);
+  const [discount2Percentage, setDiscount2Percentage] = useState(0);
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
@@ -88,6 +91,45 @@ export default function Sales() {
       unsubSalespeople();
     };
   }, []);
+
+  const handleDeleteSale = async (sale: Sale) => {
+    if (!window.confirm('Are you sure you want to delete this sale? This will revert customer balance and product stock.')) return;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const saleRef = doc(db, 'sales', sale.id);
+        const customerRef = doc(db, 'customers', sale.customerId);
+        const customerSnap = await transaction.get(customerRef);
+
+        // 1. Revert Customer Balance and Paid Amount
+        if (customerSnap.exists()) {
+          const currentData = customerSnap.data();
+          const unpaidAmount = sale.totalAmount - sale.paidAmount;
+          
+          transaction.update(customerRef, {
+            balance: Math.max(0, (currentData.balance || 0) - unpaidAmount),
+            totalPaid: Math.max(0, (currentData.totalPaid || 0) - sale.paidAmount)
+          });
+        }
+
+        // 2. Revert Product Stock
+        for (const item of sale.items) {
+          const productRef = doc(db, 'products', item.productId);
+          const productSnap = await transaction.get(productRef);
+          if (productSnap.exists()) {
+            transaction.update(productRef, {
+              stock: productSnap.data().stock + item.quantity
+            });
+          }
+        }
+
+        // 3. Delete the Sale
+        transaction.delete(saleRef);
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `sales/${sale.id}`);
+    }
+  };
 
   const totalCart = cartItems.reduce((acc, item) => acc + item.total, 0);
 
@@ -122,10 +164,13 @@ export default function Sales() {
     if (!selectedCustomer || cartItems.length === 0) return;
 
     const customer = customers.find(c => c.id === selectedCustomer);
+    if (!customer) return;
     
     const subtotal = cartItems.reduce((acc, item) => acc + item.total, 0);
     const discountValue = (subtotal * discountPercentage) / 100;
-    const totalAmount = Math.max(0, subtotal - discountValue);
+    const netAfterDiscount1 = subtotal - discountValue;
+    const discount2Value = (netAfterDiscount1 * discount2Percentage) / 100;
+    const totalAmount = Math.max(0, netAfterDiscount1 - discount2Value);
     
     // Calculate final status
     const status = paidAmount >= totalAmount ? 'paid' : (paidAmount > 0 ? 'partial' : 'unpaid');
@@ -152,6 +197,9 @@ export default function Sales() {
         const customerRef = doc(db, 'customers', selectedCustomer);
         const customerSnap = await transaction.get(customerRef);
 
+        const existingBalance = customerSnap.exists() ? (customerSnap.data().balance || 0) : 0;
+        const newBalance = existingBalance + remainingBalance;
+
         // 2. Perform all writes after reads
         const saleRef = collection(db, 'sales');
         const invoiceNum = `INV-${Date.now().toString().slice(-6)}`;
@@ -166,9 +214,13 @@ export default function Sales() {
           totalAmount: totalAmount,
           discountPercentage: discountPercentage,
           discountValue: discountValue,
+          discount2Percentage: discount2Percentage,
+          discount2Value: discount2Value,
           totalCommission: totalCommission,
           paidAmount: paidAmount,
           status: status,
+          previousBalance: existingBalance,
+          newBalance: newBalance,
           date: Timestamp.now()
         };
 
@@ -197,11 +249,17 @@ export default function Sales() {
         }
       });
 
-      // Update Customer Balance
-      if (customerSnap.exists()) {
-        const existingBalance = customerSnap.data().balance || 0;
-        transaction.update(customerRef, { balance: existingBalance + remainingBalance });
-      }
+        // Update Customer Balance and Total Paid
+        if (customerSnap.exists()) {
+          const currentData = customerSnap.data();
+          const existingBalance = currentData.balance || 0;
+          const existingPaid = currentData.totalPaid || 0;
+          
+          transaction.update(customerRef, { 
+            balance: existingBalance + remainingBalance,
+            totalPaid: existingPaid + paidAmount
+          });
+        }
 
       return docId;
     });
@@ -212,6 +270,7 @@ export default function Sales() {
     setSelectedSalesperson('');
     setPaidAmount(0);
     setDiscountPercentage(0);
+    setDiscount2Percentage(0);
     
     // Navigate to the newly created invoice
     if (result) {
@@ -231,8 +290,10 @@ export default function Sales() {
     const dataToExport = filteredSales.map(s => ({
       invoiceNumber: s.invoiceNumber,
       customerName: s.customerName,
-      date: s.date ? s.date.toDate().toLocaleString() : 'N/A',
+      date: s.date ? (typeof s.date.toDate === 'function' ? s.date.toDate().toLocaleString() : new Date(s.date).toLocaleString()) : 'N/A',
       totalAmount: s.totalAmount,
+      discount1Value: s.discountValue || 0,
+      discount2Value: s.discount2Value || 0,
       paidAmount: s.paidAmount,
       balance: s.totalAmount - s.paidAmount,
       status: s.status,
@@ -244,6 +305,8 @@ export default function Sales() {
       customerName: 'Customer Name',
       date: 'Date',
       totalAmount: 'Total Amount (Tk)',
+      discount1Value: 'Discount 1 (Tk)',
+      discount2Value: 'Discount 2 (Tk)',
       paidAmount: 'Paid Amount (Tk)',
       balance: 'Balance Due (Tk)',
       status: 'Status',
@@ -334,12 +397,20 @@ export default function Sales() {
                       <StatusBadge status={s.status} />
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={() => navigate(`/invoice/${s.id}`)}
-                        className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-slate-500 hover:text-white hover:border-amber-500 transition-all shadow-lg"
-                      >
-                        <Eye size={16} />
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <button 
+                          onClick={() => navigate(`/invoice/${s.id}`)}
+                          className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-slate-500 hover:text-white hover:border-amber-500 transition-all shadow-lg"
+                        >
+                          <Eye size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteSale(s)}
+                          className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-slate-500 hover:text-rose-500 hover:border-rose-500/50 transition-all shadow-lg"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -479,15 +550,31 @@ export default function Sales() {
                   </div>
 
                     <div className="space-y-4 pt-6 border-t border-slate-800">
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-3 gap-4">
                         <div className="p-1">
-                          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Discount (%)</label>
+                          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Discount 1 (%)</label>
                           <div className="relative">
                             <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 font-bold text-xs">%</div>
                             <input 
                               type="number" 
                               value={discountPercentage}
                               onChange={(e) => setDiscountPercentage(Number(e.target.value))}
+                              className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-3.5 text-emerald-500 font-black text-lg tracking-tighter focus:border-emerald-500 outline-none font-sans"
+                              placeholder="0"
+                              max="100"
+                              min="0"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="p-1">
+                          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Discount 2 (%)</label>
+                          <div className="relative">
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 font-bold text-xs">%</div>
+                            <input 
+                              type="number" 
+                              value={discount2Percentage}
+                              onChange={(e) => setDiscount2Percentage(Number(e.target.value))}
                               className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-3.5 text-emerald-500 font-black text-lg tracking-tighter focus:border-emerald-500 outline-none font-sans"
                               placeholder="0"
                               max="100"
@@ -517,8 +604,14 @@ export default function Sales() {
                         </div>
                         {discountPercentage > 0 && (
                           <div className="flex justify-between items-center px-4">
-                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Discount ({discountPercentage}%)</span>
+                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Discount 1 ({discountPercentage}%)</span>
                             <span className="font-bold text-emerald-500 text-xs">-{formatCurrency((totalCart * discountPercentage) / 100)}</span>
+                          </div>
+                        )}
+                        {discount2Percentage > 0 && (
+                          <div className="flex justify-between items-center px-4">
+                            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right">Discount 2 ({discount2Percentage}%) <br/><span className="text-[8px] opacity-70">(On Net After Disc. 1)</span></span>
+                            <span className="font-bold text-emerald-500 text-xs">-{formatCurrency(((totalCart - (totalCart * discountPercentage / 100)) * discount2Percentage) / 100)}</span>
                           </div>
                         )}
                         {selectedSalesperson && (
@@ -537,7 +630,7 @@ export default function Sales() {
                       <div className="flex justify-between items-center bg-amber-500/5 p-5 rounded-2xl border border-amber-500/20">
                         <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Net Payable</span>
                         <span className="text-3xl font-black text-white tracking-tighter">
-                          {formatCurrency(Math.max(0, totalCart - ((totalCart * discountPercentage) / 100)))}
+                          {formatCurrency(Math.max(0, (totalCart - (totalCart * discountPercentage / 100)) * (1 - discount2Percentage / 100)))}
                         </span>
                       </div>
 
@@ -545,9 +638,9 @@ export default function Sales() {
                         <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Remaining Balance</span>
                         <span className={cn(
                           "font-black text-sm tracking-tight",
-                          (totalCart - ((totalCart * discountPercentage) / 100)) - paidAmount > 0 ? "text-rose-500" : "text-emerald-500"
+                          ((totalCart - (totalCart * discountPercentage / 100)) * (1 - discount2Percentage / 100)) - paidAmount > 0 ? "text-rose-500" : "text-emerald-500"
                         )}>
-                          {formatCurrency(Math.max(0, (totalCart - ((totalCart * discountPercentage) / 100)) - paidAmount))}
+                          {formatCurrency(Math.max(0, ((totalCart - (totalCart * discountPercentage / 100)) * (1 - discount2Percentage / 100)) - paidAmount))}
                         </span>
                       </div>
 

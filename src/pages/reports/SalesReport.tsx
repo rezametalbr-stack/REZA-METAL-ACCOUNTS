@@ -59,7 +59,15 @@ export default function SalesReport() {
   // Monthly Grouping
   const monthlyData = sales.reduce((acc: any[], sale) => {
     if (!sale.date) return acc;
-    const date = sale.date.toDate();
+    let date: Date;
+    if (typeof sale.date.toDate === 'function') {
+      date = sale.date.toDate();
+    } else {
+      date = new Date(sale.date);
+    }
+    
+    if (isNaN(date.getTime())) return acc;
+    
     const month = date.toLocaleString('default', { month: 'short', year: '2-digit' });
     
     const existing = acc.find(d => d.month === month);

@@ -20,12 +20,14 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface Supplier {
   id: string;
+  contactId?: string;
   name: string;
   contactPerson?: string;
   phone?: string;
   email?: string;
   address?: string;
   balance: number;
+  totalPaid?: number;
 }
 
 export default function Suppliers() {
@@ -33,13 +35,18 @@ export default function Suppliers() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [supplierForPayment, setSupplierForPayment] = useState<Supplier | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
   const [formData, setFormData] = useState({
+    contactId: '',
     name: '',
     contactPerson: '',
     phone: '',
     email: '',
     address: '',
-    balance: 0
+    balance: 0,
+    totalPaid: 0
   });
 
   useEffect(() => {
@@ -54,16 +61,21 @@ export default function Suppliers() {
     e.preventDefault();
     try {
       if (editingSupplier) {
-        await updateDoc(doc(db, 'suppliers', editingSupplier.id), formData);
+        await updateDoc(doc(db, 'suppliers', editingSupplier.id), {
+          ...formData,
+          balance: Number(formData.balance),
+          totalPaid: Number(formData.totalPaid)
+        });
       } else {
         await addDoc(collection(db, 'suppliers'), {
           ...formData,
-          balance: Number(formData.balance)
+          balance: Number(formData.balance),
+          totalPaid: Number(formData.totalPaid)
         });
       }
       setIsModalOpen(false);
       setEditingSupplier(null);
-      setFormData({ name: '', contactPerson: '', phone: '', email: '', address: '', balance: 0 });
+      setFormData({ contactId: '', name: '', contactPerson: '', phone: '', email: '', address: '', balance: 0, totalPaid: 0 });
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'suppliers');
     }
@@ -72,14 +84,44 @@ export default function Suppliers() {
   const handleEdit = (supplier: Supplier) => {
     setEditingSupplier(supplier);
     setFormData({
+      contactId: supplier.contactId || '',
       name: supplier.name,
       contactPerson: supplier.contactPerson || '',
       phone: supplier.phone || '',
       email: supplier.email || '',
       address: supplier.address || '',
-      balance: supplier.balance
+      balance: supplier.balance,
+      totalPaid: supplier.totalPaid || 0
     });
     setIsModalOpen(true);
+  };
+
+  const handleRecordPayment = (supplier: Supplier) => {
+    setSupplierForPayment(supplier);
+    setPaymentAmount('');
+    setIsPaymentModalOpen(true);
+  };
+
+  const submitPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supplierForPayment) return;
+    
+    const amount = parseFloat(paymentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid positive amount.');
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'suppliers', supplierForPayment.id), {
+        balance: (supplierForPayment.balance || 0) - amount,
+        totalPaid: (supplierForPayment.totalPaid || 0) + amount
+      });
+      setIsPaymentModalOpen(false);
+      setSupplierForPayment(null);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `suppliers/${supplierForPayment.id}`);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -99,6 +141,72 @@ export default function Suppliers() {
 
   return (
     <div className="space-y-8 max-w-[1600px] mx-auto pb-12">
+      {/* Payment Modal */}
+      <AnimatePresence>
+        {isPaymentModalOpen && supplierForPayment && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsPaymentModalOpen(false)}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-[#161B22] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 bg-[#0F1218] border-b border-slate-800 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-black text-white tracking-tight uppercase">Record Payment</h3>
+                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-1">To: {supplierForPayment.name}</p>
+                </div>
+                <button onClick={() => setIsPaymentModalOpen(false)} className="h-8 w-8 flex items-center justify-center rounded-lg bg-[#0B0D11] text-slate-500 hover:text-white transition-colors">
+                  <X size={16} />
+                </button>
+              </div>
+              <form onSubmit={submitPayment} className="p-6 space-y-6">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Payment Amount Made</label>
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs font-mono">Tk</div>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      required 
+                      autoFocus
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl pl-12 pr-4 py-4 text-2xl font-black text-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-800" 
+                      placeholder="0.00" 
+                    />
+                  </div>
+                  <div className="mt-4 p-4 bg-amber-500/5 rounded-xl border border-amber-500/10">
+                    <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1 italic">Current Payable Adjustment:</p>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-500">Current Payable:</span>
+                      <span className="font-mono font-bold text-rose-500">{formatCurrency(supplierForPayment.balance)}</span>
+                    </div>
+                    {paymentAmount && !isNaN(parseFloat(paymentAmount)) && (
+                      <div className="flex justify-between items-center mt-1 pt-1 border-t border-slate-800 text-xs">
+                        <span className="text-slate-500">New Payable:</span>
+                        <span className="font-mono font-bold text-emerald-500">{formatCurrency(supplierForPayment.balance - parseFloat(paymentAmount))}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex-1 px-4 py-3 bg-[#0B0D11] text-slate-500 font-bold uppercase tracking-widest text-[10px] rounded-xl border border-slate-800">Cancel</button>
+                  <button type="submit" className="flex-1 px-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-black font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg shadow-emerald-500/10 transition-all active:scale-95">Confirm Payment</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-[#161B22] p-8 rounded-3xl border border-slate-800/50 shadow-2xl">
         <div className="flex items-center gap-5">
@@ -133,15 +241,27 @@ export default function Suppliers() {
       </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-[#161B22] p-6 rounded-3xl border border-slate-800/50">
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Total Vendors</p>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-[#161B22] p-6 rounded-3xl border border-slate-800/50 shadow-lg">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Network Vendors</p>
           <p className="text-3xl font-black text-white tracking-tighter">{suppliers.length}</p>
         </div>
-        <div className="bg-[#161B22] p-6 rounded-3xl border border-slate-800/50">
-          <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-2">Total Payable</p>
+        <div className="bg-[#161B22] p-6 rounded-3xl border border-slate-800/50 shadow-lg">
+          <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-2 px-1">Total Payable (Due)</p>
           <p className="text-3xl font-black text-white tracking-tighter">
-            {formatCurrency(suppliers.reduce((acc, s) => acc + s.balance, 0))}
+            {formatCurrency(suppliers.reduce((acc, s) => acc + (s.balance || 0), 0))}
+          </p>
+        </div>
+        <div className="bg-[#161B22] p-6 rounded-3xl border border-slate-800/50 shadow-lg">
+          <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-2 px-1">Total Payments (Paid)</p>
+          <p className="text-3xl font-black text-white tracking-tighter">
+            {formatCurrency(suppliers.reduce((acc, s) => acc + (s.totalPaid || 0), 0))}
+          </p>
+        </div>
+        <div className="bg-[#161B22] p-6 rounded-3xl border border-slate-800/50 shadow-lg">
+          <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-2 px-1">Total Procurement</p>
+          <p className="text-3xl font-black text-white tracking-tighter">
+            {formatCurrency(suppliers.reduce((acc, s) => acc + (s.totalPaid || 0) + (s.balance || 0), 0))}
           </p>
         </div>
       </div>
@@ -164,23 +284,29 @@ export default function Suppliers() {
           <table className="w-full">
             <thead>
               <tr className="bg-[#0B0D11]">
+                <th className="text-left py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800">Contact ID</th>
                 <th className="text-left py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800">Company Name</th>
                 <th className="text-left py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800">Primary Contact</th>
                 <th className="text-left py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800">Phone</th>
                 <th className="text-left py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800">Email</th>
                 <th className="text-left py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800">Location</th>
-                <th className="text-right py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800">Payable</th>
+                <th className="text-right py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800">Total Purchase</th>
+                <th className="text-right py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800">Paid</th>
+                <th className="text-right py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800">Balance</th>
                 <th className="text-center py-4 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {filteredSuppliers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-20 text-center text-slate-500 font-bold uppercase tracking-widest text-xs">No vendor records found</td>
+                  <td colSpan={9} className="py-20 text-center text-slate-500 font-bold uppercase tracking-widest text-xs">No vendor records found</td>
                 </tr>
               ) : (
                 filteredSuppliers.map((supplier) => (
                   <tr key={supplier.id} className="hover:bg-slate-800/30 transition-colors group">
+                    <td className="py-3 px-6 border-r border-slate-800/50 text-xs text-amber-500 font-bold font-mono">
+                      {supplier.contactId || '---'}
+                    </td>
                     <td className="py-3 px-6 border-r border-slate-800/50">
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 bg-amber-500/10 rounded-lg flex items-center justify-center text-amber-500 font-black text-xs border border-amber-500/20">
@@ -194,6 +320,16 @@ export default function Suppliers() {
                     <td className="py-3 px-6 border-r border-slate-800/50 text-xs text-slate-400 font-sans truncate max-w-[150px]">{supplier.email || '---'}</td>
                     <td className="py-3 px-6 border-r border-slate-800/50 text-xs text-slate-400 font-sans truncate max-w-[150px]">{supplier.address || '---'}</td>
                     <td className="py-3 px-6 border-r border-slate-800/50 text-right">
+                      <span className="font-mono text-sm font-bold text-amber-500">
+                        {formatCurrency((supplier.totalPaid || 0) + supplier.balance)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-6 border-r border-slate-800/50 text-right">
+                      <span className="font-mono text-sm font-bold text-emerald-500">
+                        {formatCurrency(supplier.totalPaid || 0)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-6 border-r border-slate-800/50 text-right">
                       <span className={cn(
                         "font-mono text-sm font-bold",
                         supplier.balance > 0 ? "text-rose-500" : "text-emerald-500"
@@ -203,6 +339,13 @@ export default function Suppliers() {
                     </td>
                     <td className="py-3 px-6">
                       <div className="flex justify-center gap-2">
+                        <button 
+                          onClick={() => handleRecordPayment(supplier)}
+                          className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-500 hover:text-white rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1"
+                          title="Record Payment"
+                        >
+                          Paid
+                        </button>
                         <button 
                           onClick={() => handleEdit(supplier)}
                           className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-amber-500 transition-colors"
@@ -262,16 +405,28 @@ export default function Suppliers() {
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Vendor/Company Name</label>
-                      <input
-                        required
-                        type="text"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full bg-[#0B0D11] border border-slate-800 rounded-2xl px-6 py-4 text-white focus:border-amber-500 outline-none transition-all font-sans font-bold"
-                        placeholder="e.g. Zenith Metals Ltd."
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Contact ID</label>
+                        <input
+                          type="text"
+                          value={formData.contactId}
+                          onChange={(e) => setFormData({ ...formData, contactId: e.target.value })}
+                          className="w-full bg-[#0B0D11] border border-slate-800 rounded-2xl px-6 py-4 text-white focus:border-amber-500 outline-none transition-all font-sans font-bold"
+                          placeholder="e.g. SUPP-001"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Vendor/Company Name</label>
+                        <input
+                          required
+                          type="text"
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          className="w-full bg-[#0B0D11] border border-slate-800 rounded-2xl px-6 py-4 text-white focus:border-amber-500 outline-none transition-all font-sans font-bold"
+                          placeholder="e.g. Zenith Metals Ltd."
+                        />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -314,9 +469,9 @@ export default function Suppliers() {
                       />
                     </div>
 
-                    {!editingSupplier && (
+                    <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest px-1">Initial Opening Balance (Payable)</label>
+                        <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest px-1">Balance (Payable)</label>
                         <div className="relative">
                           <DollarSign className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
                           <input
@@ -327,7 +482,19 @@ export default function Suppliers() {
                           />
                         </div>
                       </div>
-                    )}
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest px-1">Total Paid (Till Date)</label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
+                          <input
+                            type="number"
+                            value={formData.totalPaid}
+                            onChange={(e) => setFormData({ ...formData, totalPaid: Number(e.target.value) })}
+                            className="w-full bg-[#0B0D11] font-black text-xl border border-slate-800 rounded-2xl pl-14 pr-6 py-4 text-emerald-500 focus:border-emerald-500/50 outline-none transition-all font-sans"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <button
