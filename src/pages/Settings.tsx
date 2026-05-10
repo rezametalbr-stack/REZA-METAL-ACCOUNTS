@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent, useRef, ChangeEvent } from 'react';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, Timestamp, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Building2, Save, Globe, Phone, Mail, MapPin, Hash, Image as ImageIcon, Loader2, Upload, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -60,6 +60,82 @@ export default function Settings() {
       setSettings(prev => ({ ...prev, logoUrl: reader.result as string }));
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleClearSales = async () => {
+    if (!isAdmin) return;
+    if (!window.confirm('WARNING: This will PERMANENTLY delete ALL sales and commission records. This action cannot be undone. It will also reset customer balances and paid totals. Continue?')) return;
+
+    try {
+      const salesSnap = await getDocs(collection(db, 'sales'));
+      const commissionsSnap = await getDocs(collection(db, 'commissions'));
+      const customersSnap = await getDocs(collection(db, 'customers'));
+      
+      const batch = writeBatch(db);
+      
+      salesSnap.forEach(doc => batch.delete(doc.ref));
+      commissionsSnap.forEach(doc => batch.delete(doc.ref));
+      customersSnap.forEach(doc => {
+        batch.update(doc.ref, { balance: 0, totalPaid: 0 });
+      });
+      
+      await batch.commit();
+      alert('All sales data has been cleared.');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'sales/bulk');
+    }
+  };
+
+  const handleClearPurchases = async () => {
+    if (!isAdmin) return;
+    if (!window.confirm('WARNING: This will PERMANENTLY delete ALL purchase records. This action cannot be undone. It will also reset supplier balances and paid totals. Continue?')) return;
+
+    try {
+      const purchasesSnap = await getDocs(collection(db, 'purchases'));
+      const suppliersSnap = await getDocs(collection(db, 'suppliers'));
+      
+      const batch = writeBatch(db);
+      
+      purchasesSnap.forEach(doc => batch.delete(doc.ref));
+      suppliersSnap.forEach(doc => {
+        batch.update(doc.ref, { balance: 0, totalPaid: 0 });
+      });
+      
+      await batch.commit();
+      alert('All purchase data has been cleared.');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'purchases/bulk');
+    }
+  };
+
+  const handleClearExpenses = async () => {
+    if (!isAdmin) return;
+    if (!window.confirm('WARNING: This will PERMANENTLY delete ALL expense records. Continue?')) return;
+
+    try {
+      const snap = await getDocs(collection(db, 'expenses'));
+      const batch = writeBatch(db);
+      snap.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      alert('All expense records have been cleared.');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'expenses/bulk');
+    }
+  };
+
+  const handleClearJournals = async () => {
+    if (!isAdmin) return;
+    if (!window.confirm('WARNING: This will PERMANENTLY delete ALL journal entries. Continue?')) return;
+
+    try {
+      const snap = await getDocs(collection(db, 'journalEntries'));
+      const batch = writeBatch(db);
+      snap.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      alert('All journal entries have been cleared.');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'journalEntries/bulk');
+    }
   };
 
   const handleSave = async (e: FormEvent) => {
@@ -362,6 +438,72 @@ export default function Settings() {
           )}
         </form>
       </motion.div>
+
+      {isAdmin && (
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-rose-500/5 rounded-[2.5rem] border border-rose-500/20 shadow-2xl overflow-hidden"
+        >
+          <div className="p-8 lg:p-12 space-y-8">
+            <div className="flex items-center gap-3 py-2 border-b border-rose-500/20">
+              <Trash2 size={20} className="text-rose-500" />
+              <h3 className="text-sm font-black text-rose-500 uppercase tracking-widest">Danger Zone: Data Management</h3>
+            </div>
+            
+            <p className="text-xs text-slate-500 font-bold uppercase tracking-tight">
+              Use these tools to clear existing dummy data before starting with real records. 
+              <span className="text-rose-500"> Warning: These actions are permanent and cannot be reversed.</span>
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <button 
+                onClick={handleClearSales}
+                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 transition-all group"
+              >
+                <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Trash2 size={18} className="text-rose-500" />
+                </div>
+                <span className="text-[10px] font-black text-white uppercase tracking-widest">Clear Sales</span>
+                <span className="text-[8px] text-slate-500 mt-1">Invoices & Commissions</span>
+              </button>
+
+              <button 
+                onClick={handleClearPurchases}
+                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 transition-all group"
+              >
+                <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Trash2 size={18} className="text-rose-500" />
+                </div>
+                <span className="text-[10px] font-black text-white uppercase tracking-widest">Clear Purchases</span>
+                <span className="text-[8px] text-slate-500 mt-1">Stock Inflow Records</span>
+              </button>
+
+              <button 
+                onClick={handleClearExpenses}
+                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 transition-all group"
+              >
+                <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Trash2 size={18} className="text-rose-500" />
+                </div>
+                <span className="text-[10px] font-black text-white uppercase tracking-widest">Clear Expenses</span>
+                <span className="text-[8px] text-slate-500 mt-1">Operating Costs</span>
+              </button>
+
+              <button 
+                onClick={handleClearJournals}
+                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 transition-all group"
+              >
+                <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Trash2 size={18} className="text-rose-500" />
+                </div>
+                <span className="text-[10px] font-black text-white uppercase tracking-widest">Clear Journals</span>
+                <span className="text-[8px] text-slate-500 mt-1">Manual Ledger Entries</span>
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }
