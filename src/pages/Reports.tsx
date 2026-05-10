@@ -13,7 +13,8 @@ import {
   Search,
   Download,
   Filter,
-  Library
+  Library,
+  ChevronRight
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -21,6 +22,12 @@ import ProfitLossReport from './reports/ProfitLoss';
 import SalesReport from './reports/SalesReport';
 import BalanceSheet from './reports/BalanceSheet';
 import StockReport from './reports/StockReport';
+import PurchaseSaleReport from './reports/PurchaseSaleReport';
+import SupplierCustomerReport from './reports/SupplierCustomerReport';
+import ItemReport from './reports/ItemReport';
+import ProductPurchaseReport from './reports/ProductPurchaseReport';
+import PurchasePaymentReport from './reports/PurchasePaymentReport';
+import SalePaymentReport from './reports/SalePaymentReport';
 
 export default function Reports() {
   const location = useLocation();
@@ -40,6 +47,30 @@ export default function Reports() {
 
   if (path === '/reports/stock') {
     return <StockReport />;
+  }
+
+  if (path === '/reports/purchase-sale') {
+    return <PurchaseSaleReport />;
+  }
+
+  if (path === '/reports/supplier-customer') {
+    return <SupplierCustomerReport />;
+  }
+
+  if (path === '/reports/item') {
+    return <ItemReport />;
+  }
+
+  if (path === '/reports/product-purchase') {
+    return <ProductPurchaseReport />;
+  }
+
+  if (path === '/reports/purchase-payment') {
+    return <PurchasePaymentReport />;
+  }
+
+  if (path === '/reports/sale-payment') {
+    return <SalePaymentReport />;
   }
 
   const getReportInfo = () => {
@@ -101,30 +132,69 @@ export default function Reports() {
         </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content Area - Navigation Menu */}
       <motion.div 
-        key={path}
+        key={path === '/reports' ? 'menu' : path}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-[#161B22] rounded-[2rem] border border-slate-800 min-h-[500px] flex flex-col items-center justify-center p-12 text-center text-slate-500"
+        className="space-y-12"
       >
-        <div className={`h-24 w-24 ${info.bg} rounded-[2rem] flex items-center justify-center mb-6`}>
-          <info.icon className={info.color} size={48} strokeWidth={1} />
-        </div>
-        <h2 className="text-2xl font-black text-white tracking-tighter mb-2">Generating Intelligence...</h2>
-        <p className="max-w-md text-sm font-medium leading-relaxed mb-8">
-          The requested analytical module for <strong>{info.title}</strong> is being initialized. 
-          The system will synchronize real-time data from all ledger points to provide accurate visualizations.
-        </p>
-        
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-2xl">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 bg-[#0B0D11] border border-slate-800 rounded-2xl animate-pulse flex flex-col items-center justify-center gap-3">
-              <div className="h-2 w-12 bg-slate-800 rounded" />
-              <div className="h-4 w-20 bg-slate-800 rounded" />
+        {path === '/reports' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {[
+              { id: 'profit-loss', title: 'Profit & Loss', desc: 'Net income & expenses', icon: TrendingUp, color: 'emerald' },
+              { id: 'balance-sheet', title: 'Balance Sheet', desc: 'Assets & liabilities', icon: Library, color: 'slate' },
+              { id: 'purchase-sale', title: 'Purchase & Sale', desc: 'Inflow vs Outflow', icon: ShoppingBag, color: 'amber' },
+              { id: 'supplier-customer', title: 'Partner Audit', desc: 'Balances & dues', icon: Users, color: 'blue' },
+              { id: 'stock', title: 'Inventory Intel', desc: 'Asset valuation', icon: Package, color: 'purple' },
+              { id: 'item', title: 'Product Analysis', desc: 'SKU performance', icon: Box, color: 'cyan' },
+              { id: 'product-purchase', title: 'Procurement', desc: 'Purchase trends', icon: ShoppingBag, color: 'indigo' },
+              { id: 'product-sale', title: 'Revenue Intel', desc: 'Sales performance', icon: BarChart3, color: 'rose' },
+              { id: 'purchase-payment', title: 'Vendor Payments', desc: 'Disbursements', icon: DollarSign, color: 'yellow' },
+              { id: 'sale-payment', title: 'Collections', desc: 'Cash inflows', icon: CreditCard, color: 'teal' },
+            ].map((report) => (
+              <a 
+                key={report.id}
+                href={`/reports/${report.id}`}
+                className="group relative bg-[#161B22] p-8 rounded-[2.5rem] border border-slate-800 hover:border-slate-700 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-2xl overflow-hidden"
+              >
+                <div className={`absolute top-0 right-0 w-32 h-32 bg-${report.color}-500/5 blur-[50px] rounded-full -mr-16 -mt-16`} />
+                <div className={`h-12 w-12 bg-${report.color}-500/10 rounded-2xl flex items-center justify-center mb-6 border border-${report.color}-500/20 group-hover:scale-110 transition-transform`}>
+                  <report.icon className={`text-${report.color}-500`} size={24} />
+                </div>
+                <h3 className="text-lg font-black text-white tracking-tighter mb-1">{report.title}</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{report.desc}</p>
+                
+                <div className="mt-8 flex items-center justify-between">
+                  <div className="h-1 w-12 bg-slate-800 rounded-full overflow-hidden">
+                    <div className={`h-full bg-${report.color}-500 w-1/2`} />
+                  </div>
+                  <ChevronRight size={16} className="text-slate-700 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                </div>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-[#161B22] rounded-[2rem] border border-slate-800 min-h-[500px] flex flex-col items-center justify-center p-12 text-center text-slate-500">
+            <div className={`h-24 w-24 ${info.bg} rounded-[2rem] flex items-center justify-center mb-6`}>
+              <info.icon className={info.color} size={48} strokeWidth={1} />
             </div>
-          ))}
-        </div>
+            <h2 className="text-2xl font-black text-white tracking-tighter mb-2">Generating Intelligence...</h2>
+            <p className="max-w-md text-sm font-medium leading-relaxed mb-8">
+              The requested analytical module for <strong>{info.title}</strong> is being initialized. 
+              The system will synchronize real-time data from all ledger points to provide accurate visualizations.
+            </p>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-2xl">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-32 bg-[#0B0D11] border border-slate-800 rounded-2xl animate-pulse flex flex-col items-center justify-center gap-3">
+                  <div className="h-2 w-12 bg-slate-800 rounded" />
+                  <div className="h-4 w-20 bg-slate-800 rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </motion.div>
     </div>
   );

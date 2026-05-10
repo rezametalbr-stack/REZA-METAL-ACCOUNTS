@@ -51,6 +51,7 @@ function AppContent() {
           <Route path="inventory/:id" element={<ProductDetails />} />
           
           {/* Report Routes */}
+          <Route path="reports" element={<Reports />} />
           <Route path="reports/profit-loss" element={<Reports />} />
           <Route path="reports/purchase-sale" element={<Reports />} />
           <Route path="reports/supplier-customer" element={<Reports />} />
