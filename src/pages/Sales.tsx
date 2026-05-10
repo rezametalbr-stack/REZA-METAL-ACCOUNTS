@@ -177,16 +177,16 @@ export default function Sales() {
     const remainingBalance = totalAmount - paidAmount;
 
     // Calculate total commission for this sale
+    const discountFactor = subtotal > 0 ? totalAmount / subtotal : 1;
     let totalCommission = 0;
     cartItems.forEach(item => {
       const product = products.find(p => p.id === item.productId);
       if (product && product.commissionRate) {
-        // Commission is usually based on the product's selling price, 
-        // but we might want to scale it if there's a global discount.
-        // For now, keeping it based on item totals.
         totalCommission += (item.total * product.commissionRate) / 100;
       }
     });
+    // Apply discount scaling to commission
+    totalCommission = totalCommission * discountFactor;
 
     try {
       const result = await runTransaction(db, async (transaction) => {
@@ -620,7 +620,10 @@ export default function Sales() {
                             <span className="font-bold text-slate-500 text-xs">
                               {formatCurrency(cartItems.reduce((acc, item) => {
                                 const product = products.find(p => p.id === item.productId);
-                                return acc + (product?.commissionRate ? (item.total * product.commissionRate) / 100 : 0);
+                                const baseComm = product?.commissionRate ? (item.total * product.commissionRate) / 100 : 0;
+                                // Apply the same discount factor as the total bill
+                                const discountFactor = totalCart > 0 ? (Math.max(0, (totalCart - (totalCart * discountPercentage / 100)) * (1 - discount2Percentage / 100))) / totalCart : 1;
+                                return acc + (baseComm * discountFactor);
                               }, 0))}
                             </span>
                           </div>

@@ -80,6 +80,10 @@ export default function SalesReport() {
     return acc;
   }, []).reverse(); // Reverse for chronological order
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <div className="space-y-8 max-w-[1600px] mx-auto pb-12">
       {/* Header */}
@@ -96,14 +100,17 @@ export default function SalesReport() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 relative z-10">
+        <div className="flex items-center gap-4 relative z-10 print:hidden">
           <button className="bg-[#0B0D11] hover:bg-slate-800 text-slate-400 hover:text-white font-black uppercase tracking-widest text-[10px] px-6 py-4 rounded-2xl border border-slate-800 transition-all flex items-center gap-3">
             <Calendar size={16} />
             YTD 2024
           </button>
-          <button className="bg-rose-500 hover:bg-rose-600 text-black font-black uppercase tracking-widest text-[10px] px-8 py-4 rounded-2xl transition-all flex items-center gap-3 shadow-xl shadow-rose-500/20 hover:scale-105 active:scale-95">
+          <button 
+            onClick={handlePrint}
+            className="bg-rose-500 hover:bg-rose-600 text-black font-black uppercase tracking-widest text-[10px] px-8 py-4 rounded-2xl transition-all flex items-center gap-3 shadow-xl shadow-rose-500/20 hover:scale-105 active:scale-95"
+          >
             <Download size={16} strokeWidth={3} />
-            Generate Report
+            Print Report
           </button>
         </div>
       </div>

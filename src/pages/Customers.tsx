@@ -9,7 +9,9 @@ import {
   Mail,
   MapPin,
   MoreVertical,
-  X
+  X,
+  ArrowUpDown,
+  Filter
 } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -36,6 +38,8 @@ export default function Customers() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [customerForPayment, setCustomerForPayment] = useState<Customer | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: 'balance'; direction: 'asc' | 'desc' | null }>({ key: 'balance', direction: null });
+  const [showOnlyDue, setShowOnlyDue] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'customers'), (snapshot) => {
@@ -46,10 +50,26 @@ export default function Customers() {
     return unsubscribe;
   }, []);
 
-  const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.phone?.includes(searchTerm)
-  );
+  const processedCustomers = customers
+    .filter(c => {
+      const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           c.phone?.includes(searchTerm);
+      const matchesDue = showOnlyDue ? (c.balance || 0) > 0 : true;
+      return matchesSearch && matchesDue;
+    })
+    .sort((a, b) => {
+      if (!sortConfig.direction) return 0;
+      const valA = a.balance || 0;
+      const valB = b.balance || 0;
+      return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+    });
+
+  const toggleSort = () => {
+    setSortConfig(current => ({
+      key: 'balance',
+      direction: current.direction === 'asc' ? 'desc' : current.direction === 'desc' ? null : 'asc'
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -231,17 +251,31 @@ export default function Customers() {
       </div>
 
       <div className="bg-[var(--bg-card)] rounded-[2rem] border border-[var(--border-color)] overflow-hidden shadow-2xl transition-colors duration-300">
-        <div className="p-8 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-sidebar)]">
+        <div className="p-8 border-b border-[var(--border-color)] flex flex-wrap justify-between items-center bg-[var(--bg-sidebar)] gap-4">
           <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-widest">Customer Accounts</h3>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={14} />
-            <input 
-              type="text" 
-              placeholder="Filter spreadsheet..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl pl-9 pr-4 py-2 text-xs text-[var(--text-primary)] focus:border-amber-500 outline-none w-64 transition-all"
-            />
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={14} />
+              <input 
+                type="text" 
+                placeholder="Filter spreadsheet..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl pl-9 pr-4 py-2 text-xs text-[var(--text-primary)] focus:border-amber-500 outline-none w-64 transition-all"
+              />
+            </div>
+            <button
+              onClick={() => setShowOnlyDue(!showOnlyDue)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
+                showOnlyDue 
+                  ? "bg-rose-500/10 border-rose-500/50 text-rose-500 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
+                  : "bg-[var(--bg-page)] border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              )}
+            >
+              <Filter size={14} />
+              Due Only
+            </button>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -255,7 +289,21 @@ export default function Customers() {
                 <th className="text-left py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)]">Address</th>
                 <th className="text-right py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)]">Total Sale</th>
                 <th className="text-right py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)]">Paid</th>
-                <th className="text-right py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)]">Balance</th>
+                <th 
+                  className="text-right py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)] cursor-pointer hover:bg-[var(--bg-sidebar)] transition-colors group"
+                  onClick={toggleSort}
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Balance
+                    <ArrowUpDown 
+                      size={12} 
+                      className={cn(
+                        "transition-colors",
+                        sortConfig.direction ? "text-amber-500" : "text-slate-600 group-hover:text-slate-400"
+                      )} 
+                    />
+                  </div>
+                </th>
                 <th className="text-center py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-[var(--border-color)]">Actions</th>
               </tr>
             </thead>
@@ -264,12 +312,12 @@ export default function Customers() {
                 <tr>
                   <td colSpan={8} className="py-20 text-center text-[var(--text-secondary)] font-bold uppercase tracking-widest text-xs">Loading ledger...</td>
                 </tr>
-              ) : filteredCustomers.length === 0 ? (
+              ) : processedCustomers.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-20 text-center text-[var(--text-secondary)] font-bold uppercase tracking-widest text-xs">No records found</td>
                 </tr>
               ) : (
-                filteredCustomers.map((c) => (
+                processedCustomers.map((c) => (
                   <tr key={c.id} className="hover:bg-[var(--bg-page)] transition-colors group">
                     <td className="py-3 px-6 border-r border-[var(--border-color)] text-xs text-amber-500 font-bold font-mono">
                       {c.contactId || '---'}

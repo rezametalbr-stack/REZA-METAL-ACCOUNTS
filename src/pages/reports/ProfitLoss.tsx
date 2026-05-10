@@ -9,7 +9,8 @@ import {
   Filter,
   PieChart,
   BarChart,
-  ArrowRight
+  ArrowRight,
+  Printer
 } from 'lucide-react';
 import { collection, onSnapshot, query, where, Timestamp, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -57,6 +58,10 @@ export default function ProfitLossReport() {
   const netProfit = totalRevenue - totalExpenses;
   const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   // Group expenses by account
   const expensesByAccount = expenses.reduce((acc, exp) => {
     const name = exp.accountName || 'Uncategorized';
@@ -80,7 +85,7 @@ export default function ProfitLossReport() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 relative z-10">
+        <div className="flex items-center gap-4 relative z-10 print:hidden">
           <div className="bg-[#0B0D11] border border-slate-800 p-1.5 rounded-2xl flex">
             {['month', 'quarter', 'year'].map((range) => (
               <button
@@ -95,9 +100,12 @@ export default function ProfitLossReport() {
               </button>
             ))}
           </div>
-          <button className="bg-emerald-500 hover:bg-emerald-600 text-black font-black uppercase tracking-widest text-[10px] px-8 py-4 rounded-2xl transition-all flex items-center gap-3 shadow-xl shadow-emerald-500/20">
-            <Download size={16} strokeWidth={3} />
-            Export
+          <button 
+            onClick={handlePrint}
+            className="bg-emerald-500 hover:bg-emerald-600 text-black font-black uppercase tracking-widest text-[10px] px-8 py-4 rounded-2xl transition-all flex items-center gap-3 shadow-xl shadow-emerald-500/20 active:scale-95"
+          >
+            <Printer size={16} strokeWidth={3} />
+            Print Report
           </button>
         </div>
       </div>
@@ -241,6 +249,15 @@ export default function ProfitLossReport() {
           </div>
         </div>
       </div>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          body { background: white !important; }
+          .print\\:hidden { display: none !important; }
+          main { padding: 0 !important; }
+          header, aside { display: none !important; }
+          #root > div > div { gap: 0 !important; }
+        }
+      `}} />
     </div>
   );
 }

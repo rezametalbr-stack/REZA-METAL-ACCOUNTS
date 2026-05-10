@@ -10,7 +10,8 @@ import {
   PieChart,
   ArrowUpRight,
   TrendingUp,
-  FileText
+  FileText,
+  Printer
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -48,6 +49,10 @@ export default function BalanceSheet() {
 
   const balanceGap = totalAssets - (totalLiabilities + totalEquity);
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <div className="space-y-8 max-w-[1600px] mx-auto pb-12">
       {/* Header */}
@@ -64,7 +69,7 @@ export default function BalanceSheet() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 relative z-10">
+        <div className="flex items-center gap-4 relative z-10 print:hidden">
           <div className="flex items-center gap-3 bg-[#0B0D11] border border-slate-800 px-4 py-2 rounded-2xl">
             <Calendar size={14} className="text-slate-500" />
             <input 
@@ -74,9 +79,12 @@ export default function BalanceSheet() {
               className="bg-transparent border-none text-[10px] font-black text-white shadow-none focus:ring-0 uppercase tracking-widest cursor-pointer" 
             />
           </div>
-          <button className="bg-white hover:bg-slate-200 text-black font-black uppercase tracking-widest text-[10px] px-8 py-4 rounded-2xl transition-all flex items-center gap-3 shadow-xl active:scale-95">
-            <Download size={16} strokeWidth={3} />
-            Export Statement
+          <button 
+            onClick={handlePrint}
+            className="bg-white hover:bg-slate-200 text-black font-black uppercase tracking-widest text-[10px] px-8 py-4 rounded-2xl transition-all flex items-center gap-3 shadow-xl active:scale-95"
+          >
+            <Printer size={16} strokeWidth={3} />
+            Print Copy
           </button>
         </div>
       </div>
@@ -213,6 +221,15 @@ export default function BalanceSheet() {
           </div>
         </div>
       </div>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          body { background: white !important; }
+          .print\\:hidden { display: none !important; }
+          main { padding: 0 !important; }
+          header, aside { display: none !important; }
+          #root > div > div { gap: 0 !important; }
+        }
+      `}} />
     </div>
   );
 }

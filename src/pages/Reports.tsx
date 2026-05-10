@@ -20,6 +20,7 @@ import { motion } from 'motion/react';
 import ProfitLossReport from './reports/ProfitLoss';
 import SalesReport from './reports/SalesReport';
 import BalanceSheet from './reports/BalanceSheet';
+import StockReport from './reports/StockReport';
 
 export default function Reports() {
   const location = useLocation();
@@ -35,6 +36,10 @@ export default function Reports() {
 
   if (path === '/reports/balance-sheet') {
     return <BalanceSheet />;
+  }
+
+  if (path === '/reports/stock') {
+    return <StockReport />;
   }
 
   const getReportInfo = () => {

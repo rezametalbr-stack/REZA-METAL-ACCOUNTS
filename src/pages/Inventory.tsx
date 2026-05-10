@@ -169,6 +169,7 @@ export default function Inventory() {
                 <th className="px-6 py-5">SKU / ID</th>
                 <th className="px-6 py-5">Category</th>
                 <th className="px-6 py-5">Unit Price</th>
+                <th className="px-6 py-5 text-center">Commission</th>
                 <th className="px-6 py-5">Stock Level</th>
                 <th className="px-6 py-5 text-right">Actions</th>
               </tr>
@@ -200,6 +201,11 @@ export default function Inventory() {
                       </span>
                     </td>
                     <td className="px-6 py-5 font-black text-white text-lg tracking-tighter">{formatCurrency(p.price)}</td>
+                    <td className="px-6 py-5 text-center">
+                      <span className="font-mono text-xs font-bold text-emerald-500 bg-emerald-500/5 border border-emerald-500/10 px-2 py-1 rounded-lg">
+                        {p.commissionRate || 0}%
+                      </span>
+                    </td>
                     <td className="px-6 py-5">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-2">

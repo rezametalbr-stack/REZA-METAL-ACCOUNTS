@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
-import { Printer, ArrowLeft, Download } from 'lucide-react';
+import { Printer, ArrowLeft, Download, Link, Check } from 'lucide-react';
 import { useSettings } from '../contexts/SettingsContext';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
@@ -15,6 +15,7 @@ export default function PurchaseView() {
   const [purchase, setPurchase] = useState<any>(null);
   const [supplier, setSupplier] = useState<any>(null);
   const [exporting, setExporting] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -40,6 +41,12 @@ export default function PurchaseView() {
     window.print();
   };
 
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const handleExportPDF = async () => {
     if (!purchase) return;
     const element = document.getElementById('invoice-content');
@@ -55,7 +62,38 @@ export default function PurchaseView() {
         scale: 2,
         useCORS: true,
         letterRendering: true,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        onclone: (doc: Document) => {
+          const style = doc.createElement('style');
+          style.innerHTML = `
+            * {
+              color-scheme: light !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            .text-amber-500 { color: #f59e0b !important; }
+            .text-emerald-500 { color: #10b981 !important; }
+            .text-rose-500 { color: #ef4444 !important; }
+            .text-slate-400 { color: #94a3b8 !important; }
+            .text-slate-500 { color: #64748b !important; }
+            .text-slate-600 { color: #475569 !important; }
+            .text-slate-700 { color: #334155 !important; }
+            .text-white { color: #000000 !important; }
+            
+            .bg-amber-500 { background-color: #f59e0b !important; }
+            .bg-emerald-500 { background-color: #10b981 !important; }
+            .bg-[#161B22] { background-color: #ffffff !important; }
+            .bg-[#0B0D11] { background-color: #f8fafc !important; }
+            .bg-[#161B22]\/50 { background-color: #ffffff !important; }
+            .bg-[#0B0D11]\/30 { background-color: #f8fafc !important; }
+            
+            .border-slate-800 { border-color: #e2e8f0 !important; }
+            .border-slate-800\/50 { border-color: #f1f5f9 !important; }
+            .border-amber-500 { border-color: #f59e0b !important; }
+            .border-emerald-500 { border-color: #10b981 !important; }
+          `;
+          doc.head.appendChild(style);
+        }
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
     };
@@ -89,6 +127,13 @@ export default function PurchaseView() {
           Back to Procurement
         </button>
         <div className="flex gap-4">
+          <button 
+            onClick={handleCopyLink}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-400 hover:text-white font-black uppercase tracking-widest text-[10px] transition-all"
+          >
+            {copied ? <Check size={16} className="text-emerald-500" /> : <Link size={16} />}
+            {copied ? 'Link Copied!' : 'Copy Link'}
+          </button>
           <button 
             onClick={handleExportPDF}
             disabled={exporting}
