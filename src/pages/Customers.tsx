@@ -38,7 +38,7 @@ export default function Customers() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [customerForPayment, setCustomerForPayment] = useState<Customer | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [sortConfig, setSortConfig] = useState<{ key: 'balance'; direction: 'asc' | 'desc' | null }>({ key: 'balance', direction: null });
+  const [sortConfig, setSortConfig] = useState<{ key: 'balance' | 'totalSale' | 'totalPaid'; direction: 'asc' | 'desc' | null }>({ key: 'balance', direction: null });
   const [showOnlyDue, setShowOnlyDue] = useState(false);
 
   useEffect(() => {
@@ -59,16 +59,34 @@ export default function Customers() {
     })
     .sort((a, b) => {
       if (!sortConfig.direction) return 0;
-      const valA = a.balance || 0;
-      const valB = b.balance || 0;
+      
+      let valA = 0;
+      let valB = 0;
+
+      if (sortConfig.key === 'balance') {
+        valA = a.balance || 0;
+        valB = b.balance || 0;
+      } else if (sortConfig.key === 'totalPaid') {
+        valA = a.totalPaid || 0;
+        valB = b.totalPaid || 0;
+      } else if (sortConfig.key === 'totalSale') {
+        valA = (a.totalPaid || 0) + (a.balance || 0);
+        valB = (b.totalPaid || 0) + (b.balance || 0);
+      }
+
       return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
     });
 
-  const toggleSort = () => {
-    setSortConfig(current => ({
-      key: 'balance',
-      direction: current.direction === 'asc' ? 'desc' : current.direction === 'desc' ? null : 'asc'
-    }));
+  const toggleSort = (key: 'balance' | 'totalSale' | 'totalPaid') => {
+    setSortConfig(current => {
+      if (current.key === key) {
+        return {
+          key,
+          direction: current.direction === 'asc' ? 'desc' : current.direction === 'desc' ? null : 'asc'
+        };
+      }
+      return { key, direction: 'asc' };
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -287,11 +305,39 @@ export default function Customers() {
                 <th className="text-left py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)]">Phone</th>
                 <th className="text-left py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)]">Email</th>
                 <th className="text-left py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)]">Address</th>
-                <th className="text-right py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)]">Total Sale</th>
-                <th className="text-right py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)]">Paid</th>
                 <th 
                   className="text-right py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)] cursor-pointer hover:bg-[var(--bg-sidebar)] transition-colors group"
-                  onClick={toggleSort}
+                  onClick={() => toggleSort('totalSale')}
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Total Sale
+                    <ArrowUpDown 
+                      size={12} 
+                      className={cn(
+                        "transition-colors",
+                        sortConfig.key === 'totalSale' && sortConfig.direction ? "text-amber-500" : "text-slate-600 group-hover:text-slate-400"
+                      )} 
+                    />
+                  </div>
+                </th>
+                <th 
+                  className="text-right py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)] cursor-pointer hover:bg-[var(--bg-sidebar)] transition-colors group"
+                  onClick={() => toggleSort('totalPaid')}
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Paid
+                    <ArrowUpDown 
+                      size={12} 
+                      className={cn(
+                        "transition-colors",
+                        sortConfig.key === 'totalPaid' && sortConfig.direction ? "text-amber-500" : "text-slate-600 group-hover:text-slate-400"
+                      )} 
+                    />
+                  </div>
+                </th>
+                <th 
+                  className="text-right py-4 px-6 text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest border-b border-r border-[var(--border-color)] cursor-pointer hover:bg-[var(--bg-sidebar)] transition-colors group"
+                  onClick={() => toggleSort('balance')}
                 >
                   <div className="flex items-center justify-end gap-2">
                     Balance
@@ -299,7 +345,7 @@ export default function Customers() {
                       size={12} 
                       className={cn(
                         "transition-colors",
-                        sortConfig.direction ? "text-amber-500" : "text-slate-600 group-hover:text-slate-400"
+                        sortConfig.key === 'balance' && sortConfig.direction ? "text-amber-500" : "text-slate-600 group-hover:text-slate-400"
                       )} 
                     />
                   </div>
