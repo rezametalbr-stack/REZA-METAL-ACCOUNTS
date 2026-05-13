@@ -53,9 +53,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export let CURRENCY_SYMBOL = 'Tk';
+
+export function setCurrencySymbol(symbol: string) {
+  CURRENCY_SYMBOL = symbol || 'Tk';
+}
+
 export function formatCurrency(amount: number | undefined | null) {
-  if (amount === undefined || amount === null || isNaN(amount)) return 'Tk. 0.00';
-  return 'Tk. ' + amount.toLocaleString('en-IN', {
+  if (amount === undefined || amount === null || isNaN(amount)) return `${CURRENCY_SYMBOL}. 0.00`;
+  return `${CURRENCY_SYMBOL}. ` + amount.toLocaleString('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });

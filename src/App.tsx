@@ -13,12 +13,14 @@ import Salespeople from './pages/Salespeople';
 import Commissions from './pages/Commissions';
 import Suppliers from './pages/Suppliers';
 import Purchases from './pages/Purchases';
+import PurchaseOrders from './pages/PurchaseOrders';
 import ProductDetails from './pages/ProductDetails';
 import PurchaseView from './pages/PurchaseView';
 import Reports from './pages/Reports';
 import StockAdjustmentReport from './pages/StockAdjustmentReport';
 import ChartOfAccounts from './pages/ChartOfAccounts';
 import JournalEntries from './pages/JournalEntries';
+import Reminders from './pages/Reminders';
 import InvoiceView from './pages/InvoiceView';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
@@ -47,6 +49,7 @@ function AppContent() {
           <Route path="commissions" element={<Commissions />} />
           <Route path="suppliers" element={<Suppliers />} />
           <Route path="purchases" element={<Purchases />} />
+          <Route path="purchase-orders" element={<PurchaseOrders />} />
           <Route path="purchases/:id" element={<PurchaseView />} />
           <Route path="inventory/:id" element={<ProductDetails />} />
           
@@ -62,7 +65,10 @@ function AppContent() {
           <Route path="reports/product-sale" element={<Reports />} />
           <Route path="reports/purchase-payment" element={<Reports />} />
           <Route path="reports/sale-payment" element={<Reports />} />
+          <Route path="reports/salesperson-performance" element={<Reports />} />
           <Route path="reports/balance-sheet" element={<Reports />} />
+          
+          <Route path="reminders" element={<Reminders />} />
           
           <Route path="accounting/chart-of-accounts" element={<ChartOfAccounts />} />
           <Route path="accounting/journal-entries" element={<JournalEntries />} />

@@ -109,7 +109,8 @@
         "accountName": { "type": "string" },
         "date": { "type": "string", "format": "date-time" },
         "supplierId": { "type": "string" },
-        "status": { "type": "string", "enum": ["paid", "unpaid"] }
+        "status": { "type": "string", "enum": ["paid", "unpaid"] },
+        "receiptUrl": { "type": "string", "description": "Base64 or Cloud storage URL for the receipt image" }
       },
       "required": ["description", "amount", "date", "status", "accountId"]
     },
@@ -208,9 +209,71 @@
         "showEmail": { "type": "boolean" },
         "showWebsite": { "type": "boolean" },
         "showTaxId": { "type": "boolean" },
+        "currencySymbol": { "type": "string", "description": "Currency symbol used across the app (e.g., Tk, $, £)" },
+        "defaultVatRate": { "type": "number", "description": "Default VAT percentage for sales" },
+        "invoiceFooter": { "type": "string", "description": "Footer message on printed invoices" },
+        "defaultExpenseAccountId": { "type": "string", "description": "Global default account for new expenses" },
+        "defaultExpenseAccountName": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["businessName"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Payment records for customers and suppliers",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["customer_payment", "supplier_payment"] },
+        "entityId": { "type": "string" },
+        "entityName": { "type": "string" },
+        "amount": { "type": "number" },
+        "method": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "note": { "type": "string" },
+        "reference": { "type": "string" },
+        "cardNumber": { "type": "string" },
+        "cardHolder": { "type": "string" },
+        "bankAccount": { "type": "string" },
+        "mobileNumber": { "type": "string" }
+      },
+      "required": ["type", "entityId", "amount", "method", "date"]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "Tasks and reminders for follow-ups",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
+        "relatedTo": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["customer", "supplier", "inventory"] },
+            "id": { "type": "string" },
+            "name": { "type": "string" }
+          }
+        }
+      },
+      "required": ["title", "dueDate", "status"]
+    },
+    "PurchaseOrder": {
+      "title": "Purchase Order",
+      "description": "Purchase orders sent to suppliers",
+      "type": "object",
+      "properties": {
+        "orderNumber": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "items": { "type": "array", "items": { "type": "object" } },
+        "totalAmount": { "type": "number" },
+        "expectedDeliveryDate": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["draft", "sent", "ordered", "received", "cancelled"] },
+        "date": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["orderNumber", "supplierId", "totalAmount", "status", "date"]
     }
   },
   "firestore": {
@@ -221,11 +284,14 @@
     "salespeople/{salespersonId}": { "schema": "Salesperson", "description": "Salespeople collection" },
     "sales/{saleId}": { "schema": "Sale", "description": "Sales invoices collection" },
     "purchases/{purchaseId}": { "schema": "Purchase", "description": "Purchases collection" },
+    "purchaseOrders/{orderId}": { "schema": "PurchaseOrder", "description": "Purchase orders collection" },
     "commissions/{commissionId}": { "schema": "Commission", "description": "Commission records collection" },
     "expenses/{expenseId}": { "schema": "Expense", "description": "Expenses collection" },
     "users/{userId}": { "schema": "UserProfile", "description": "User profiles and roles" },
     "stockAdjustments/{adjustmentId}": { "schema": "StockAdjustment", "description": "Stock adjustments log" },
     "accounts/{accountId}": { "schema": "Account", "description": "Chart of accounts for the business" },
-    "journalEntries/{entryId}": { "schema": "JournalEntry", "description": "Manual accounting ledger entries" }
+    "journalEntries/{entryId}": { "schema": "JournalEntry", "description": "Manual accounting ledger entries" },
+    "payments/{paymentId}": { "schema": "Payment", "description": "Payment records for customers and suppliers" },
+    "reminders/{reminderId}": { "schema": "Reminder", "description": "Tasks and reminders" }
   }
 }

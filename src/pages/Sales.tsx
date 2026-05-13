@@ -12,11 +12,14 @@ import {
   AlertCircle,
   X,
   Trash2,
-  Download
+  Download,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, doc, getDoc, runTransaction, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { formatCurrency, formatDate, cn, handleFirestoreError, OperationType } from '../lib/utils';
+import { formatCurrency, formatDate, cn, handleFirestoreError, OperationType, CURRENCY_SYMBOL } from '../lib/utils';
 import { downloadCSV } from '../lib/csvExport';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
@@ -25,6 +28,7 @@ interface SaleItem {
   productId: string;
   name: string;
   price: number;
+  cost: number;
   quantity: number;
   total: number;
 }
@@ -52,6 +56,7 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
   const navigate = useNavigate();
 
   // For New Sale Form
@@ -64,6 +69,13 @@ export default function Sales() {
   const [paidAmount, setPaidAmount] = useState(0);
   const [discountPercentage, setDiscountPercentage] = useState(0);
   const [discount2Percentage, setDiscount2Percentage] = useState(0);
+
+  // Modal Product Filtering & Sorting
+  const [productSearchTerm, setProductSearchTerm] = useState('');
+  const [productSortMode, setProductSortMode] = useState<'name' | 'price-asc' | 'price-desc' | 'stock-desc' | 'stock-asc'>('name');
+
+  // Main table sorting
+  const [sortConfig, setSortConfig] = useState<{ key: keyof Sale; direction: 'asc' | 'desc' | null }>({ key: 'date', direction: 'desc' });
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
@@ -149,6 +161,7 @@ export default function Sales() {
         productId: product.id,
         name: product.name,
         price: product.price,
+        cost: product.cost || 0,
         quantity: 1,
         total: product.price
       }]);
@@ -281,10 +294,54 @@ export default function Sales() {
     }
   };
 
+  const processedProducts = products
+    .filter(p => 
+      p.name.toLowerCase().includes(productSearchTerm.toLowerCase()) || 
+      p.sku?.toLowerCase().includes(productSearchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      switch (productSortMode) {
+        case 'name': return a.name.localeCompare(b.name);
+        case 'price-asc': return a.price - b.price;
+        case 'price-desc': return b.price - a.price;
+        case 'stock-asc': return a.stock - b.stock;
+        case 'stock-desc': return b.stock - a.stock;
+        default: return 0;
+      }
+    });
+
   const filteredSales = sales.filter(s => 
-    s.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.customerName?.toLowerCase().includes(searchTerm.toLowerCase())
+    (s.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.customerName?.toLowerCase().includes(searchTerm.toLowerCase())) &&
+    (statusFilter === 'all' || s.status === statusFilter)
   );
+
+  const sortedSales = [...filteredSales].sort((a, b) => {
+    if (!sortConfig.key || !sortConfig.direction) return 0;
+    
+    let aValue: any = a[sortConfig.key];
+    let bValue: any = b[sortConfig.key];
+
+    // Handle nested date (Firebase Timestamp)
+    if (sortConfig.key === 'date') {
+      aValue = a.date?.seconds || 0;
+      bValue = b.date?.seconds || 0;
+    }
+
+    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const handleSort = (key: keyof Sale) => {
+    setSortConfig(prev => {
+      if (prev.key === key) {
+        if (prev.direction === 'asc') return { key, direction: 'desc' };
+        if (prev.direction === 'desc') return { key: 'date', direction: 'desc' }; // Reset to default
+      }
+      return { key, direction: 'asc' };
+    });
+  };
 
   const handleExport = () => {
     const dataToExport = filteredSales.map(s => ({
@@ -304,11 +361,11 @@ export default function Sales() {
       invoiceNumber: 'Invoice #',
       customerName: 'Customer Name',
       date: 'Date',
-      totalAmount: 'Total Amount (Tk)',
-      discount1Value: 'Discount 1 (Tk)',
-      discount2Value: 'Discount 2 (Tk)',
-      paidAmount: 'Paid Amount (Tk)',
-      balance: 'Balance Due (Tk)',
+      totalAmount: `Total Amount (${CURRENCY_SYMBOL})`,
+      discount1Value: `Discount 1 (${CURRENCY_SYMBOL})`,
+      discount2Value: `Discount 2 (${CURRENCY_SYMBOL})`,
+      paidAmount: `Paid Amount (${CURRENCY_SYMBOL})`,
+      balance: `Balance Due (${CURRENCY_SYMBOL})`,
       status: 'Status',
       itemsCount: 'Items Count'
     };
@@ -344,7 +401,22 @@ export default function Sales() {
               className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl py-2.5 pl-12 pr-4 focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all font-sans text-sm outline-none"
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center bg-[#0B0D11] border border-slate-800 rounded-xl p-1 overflow-hidden">
+            {(['all', 'paid', 'partial', 'unpaid'] as const).map((status) => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={cn(
+                  "px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
+                  statusFilter === status 
+                    ? "bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.3)]" 
+                    : "text-slate-500 hover:text-slate-300"
+                )}
+              >
+                {status === 'all' ? 'All Records' : status}
+              </button>
+            ))}
+          </div>
             <button 
               onClick={handleExport}
               className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all"
@@ -352,21 +424,44 @@ export default function Sales() {
               <Download size={14} />
               <span>Export</span>
             </button>
-            <button className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all">
-              <Filter size={14} />
-              <span>Status</span>
-            </button>
-          </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="bg-[#0B0D11]/50 text-slate-500 text-[10px] font-black uppercase tracking-widest border-b border-slate-800 font-sans">
               <tr>
-                <th className="px-6 py-5">Invoice #</th>
-                <th className="px-6 py-5">Customer</th>
-                <th className="px-6 py-5">Date</th>
-                <th className="px-6 py-5">Amount</th>
+                <th className="px-6 py-5 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('invoiceNumber')}>
+                  <div className="flex items-center gap-2">
+                    Invoice #
+                    {sortConfig.key === 'invoiceNumber' ? (
+                      sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-amber-500" /> : <ChevronDown size={12} className="text-amber-500" />
+                    ) : <ArrowUpDown size={12} className="opacity-30" />}
+                  </div>
+                </th>
+                <th className="px-6 py-5 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('customerName')}>
+                  <div className="flex items-center gap-2">
+                    Customer
+                    {sortConfig.key === 'customerName' ? (
+                      sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-amber-500" /> : <ChevronDown size={12} className="text-amber-500" />
+                    ) : <ArrowUpDown size={12} className="opacity-30" />}
+                  </div>
+                </th>
+                <th className="px-6 py-5 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('date')}>
+                  <div className="flex items-center gap-2">
+                    Date
+                    {sortConfig.key === 'date' ? (
+                      sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-amber-500" /> : <ChevronDown size={12} className="text-amber-500" />
+                    ) : <ArrowUpDown size={12} className="opacity-30" />}
+                  </div>
+                </th>
+                <th className="px-6 py-5 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('totalAmount')}>
+                  <div className="flex items-center gap-2">
+                    Amount
+                    {sortConfig.key === 'totalAmount' ? (
+                      sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-amber-500" /> : <ChevronDown size={12} className="text-amber-500" />
+                    ) : <ArrowUpDown size={12} className="opacity-30" />}
+                  </div>
+                </th>
                 <th className="px-6 py-5">Status</th>
                 <th className="px-6 py-5 text-right">Actions</th>
               </tr>
@@ -374,10 +469,10 @@ export default function Sales() {
             <tbody className="divide-y divide-slate-800/50 font-sans">
               {loading ? (
                 <tr><td colSpan={6} className="text-center py-12 text-slate-500">Loading sales data...</td></tr>
-              ) : filteredSales.length === 0 ? (
+              ) : sortedSales.length === 0 ? (
                 <tr><td colSpan={6} className="text-center py-12 text-slate-500 uppercase font-bold tracking-widest text-xs">No records found</td></tr>
               ) : (
-                filteredSales.map((s) => (
+                sortedSales.map((s) => (
                   <tr key={s.id} className="hover:bg-slate-800/10 transition-colors group">
                     <td className="px-6 py-4">
                       <span className="font-mono text-xs font-black text-amber-500/80 bg-amber-500/5 border border-amber-500/10 px-3 py-1.5 rounded-lg tracking-wider">
@@ -400,9 +495,10 @@ export default function Sales() {
                       <div className="flex justify-end gap-2">
                         <button 
                           onClick={() => navigate(`/invoice/${s.id}`)}
-                          className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-slate-500 hover:text-white hover:border-amber-500 transition-all shadow-lg"
+                          className="px-4 py-2 flex items-center gap-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-amber-500 transition-all shadow-lg font-black uppercase tracking-widest text-[10px]"
                         >
-                          <Eye size={16} />
+                          <Eye size={14} />
+                          <span>View</span>
                         </button>
                         <button 
                           onClick={() => handleDeleteSale(s)}
@@ -481,13 +577,44 @@ export default function Sales() {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between px-1">
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">Inventory Catalog</label>
-                      <span className="text-[10px] font-bold text-amber-500/60">{products.length} items available</span>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-1">
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">Inventory Catalog</label>
+                        <span className="text-[10px] font-bold text-amber-500/60">{processedProducts.length} items matching</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={14} />
+                          <input 
+                            type="text"
+                            placeholder="Filter products..."
+                            value={productSearchTerm}
+                            onChange={(e) => setProductSearchTerm(e.target.value)}
+                            className="bg-[#0B0D11] border border-slate-800 rounded-lg py-1.5 pl-9 pr-3 text-[10px] text-white focus:border-amber-500 outline-none w-40"
+                          />
+                        </div>
+                        <select 
+                          value={productSortMode}
+                          onChange={(e) => setProductSortMode(e.target.value as any)}
+                          className="bg-[#0B0D11] border border-slate-800 rounded-lg py-1.5 px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest outline-none focus:border-amber-500"
+                        >
+                          <option value="name">Sort: A-Z</option>
+                          <option value="price-asc">Price: Low</option>
+                          <option value="price-desc">Price: High</option>
+                          <option value="stock-desc">Stock: High</option>
+                          <option value="stock-asc">Stock: Low</option>
+                        </select>
+                      </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2 pb-4 scrollbar-thin">
-                      {products.map(p => (
-                        <div key={p.id} className="flex justify-between items-center p-4 bg-[#0B0D11]/50 border border-slate-800/50 rounded-2xl hover:border-slate-700 transition-all group">
+                      {processedProducts.length === 0 ? (
+                        <div className="col-span-2 py-10 text-center border border-dashed border-slate-800 rounded-2xl">
+                          <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">No products match your search</p>
+                        </div>
+                      ) : (
+                        processedProducts.map(p => (
+                          <div key={p.id} className="flex justify-between items-center p-4 bg-[#0B0D11]/50 border border-slate-800/50 rounded-2xl hover:border-slate-700 transition-all group">
                           <div>
                             <p className="font-bold text-white leading-tight mb-1">{p.name}</p>
                             <div className="flex items-center gap-2">
@@ -507,7 +634,7 @@ export default function Sales() {
                             <Plus size={18} strokeWidth={3} />
                           </button>
                         </div>
-                      ))}
+                      )))}
                     </div>
                   </div>
                 </div>
@@ -586,7 +713,7 @@ export default function Sales() {
                         <div className="p-1">
                           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Payment Received</label>
                           <div className="relative">
-                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">Tk</div>
+                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs">{CURRENCY_SYMBOL}</div>
                             <input 
                               type="number" 
                               value={paidAmount}
@@ -667,19 +794,40 @@ export default function Sales() {
 
 function StatusBadge({ status }: { status: Sale['status'] }) {
   const configs = {
-    paid: { icon: CheckCircle2, class: "text-emerald-500 bg-emerald-500/5 border-emerald-500/10", label: "Paid" },
-    partial: { icon: Clock, class: "text-amber-500 bg-amber-500/5 border-amber-500/10", label: "Partial" },
-    unpaid: { icon: AlertCircle, class: "text-rose-500 bg-rose-500/5 border-rose-500/10", label: "Unpaid" },
+    paid: { 
+      icon: CheckCircle2, 
+      class: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]", 
+      label: "Fully Paid" 
+    },
+    partial: { 
+      icon: Clock, 
+      class: "text-amber-400 bg-amber-500/10 border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.1)]", 
+      label: "Partial Payment" 
+    },
+    unpaid: { 
+      icon: AlertCircle, 
+      class: "text-rose-400 bg-rose-500/10 border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]", 
+      label: "Unpaid" 
+    },
   };
 
   const { icon: Icon, class: className, label } = configs[status];
 
   return (
     <span className={cn(
-      "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all",
+      "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.1em] border transition-all",
       className
     )}>
-      <Icon size={10} strokeWidth={3} />
+      <span className="relative flex h-2 w-2">
+        <span className={cn(
+          "animate-ping absolute inline-flex h-full w-full rounded-full opacity-75",
+          status === 'paid' ? "bg-emerald-400" : status === 'partial' ? "bg-amber-400" : "bg-rose-400"
+        )}></span>
+        <span className={cn(
+          "relative inline-flex rounded-full h-2 w-2",
+          status === 'paid' ? "bg-emerald-500" : status === 'partial' ? "bg-amber-500" : "bg-rose-500"
+        )}></span>
+      </span>
       {label}
     </span>
   );

@@ -28,6 +28,7 @@ import ItemReport from './reports/ItemReport';
 import ProductPurchaseReport from './reports/ProductPurchaseReport';
 import PurchasePaymentReport from './reports/PurchasePaymentReport';
 import SalePaymentReport from './reports/SalePaymentReport';
+import SalespersonPerformance from './reports/SalespersonPerformance';
 
 export default function Reports() {
   const location = useLocation();
@@ -73,6 +74,10 @@ export default function Reports() {
     return <SalePaymentReport />;
   }
 
+  if (path === '/reports/salesperson-performance') {
+    return <SalespersonPerformance />;
+  }
+
   const getReportInfo = () => {
     switch (path) {
       case '/reports/profit-loss':
@@ -97,6 +102,8 @@ export default function Reports() {
         return { title: 'Purchase Payment Report', icon: DollarSign, color: 'text-yellow-500', bg: 'bg-yellow-500/10' };
       case '/reports/sale-payment':
         return { title: 'Sale Payment Report', icon: CreditCard, color: 'text-teal-500', bg: 'bg-teal-500/10' };
+      case '/reports/salesperson-performance':
+        return { title: 'Salesperson Performance', icon: Users, color: 'text-amber-500', bg: 'bg-amber-500/10' };
       default:
         return { title: 'Business Analytics', icon: BarChart3, color: 'text-amber-500', bg: 'bg-amber-500/10' };
     }
@@ -152,6 +159,7 @@ export default function Reports() {
               { id: 'product-sale', title: 'Revenue Intel', desc: 'Sales performance', icon: BarChart3, color: 'rose' },
               { id: 'purchase-payment', title: 'Vendor Payments', desc: 'Disbursements', icon: DollarSign, color: 'yellow' },
               { id: 'sale-payment', title: 'Collections', desc: 'Cash inflows', icon: CreditCard, color: 'teal' },
+              { id: 'salesperson-performance', title: 'Agent Performance', desc: 'Team analytics', icon: Users, color: 'amber' },
             ].map((report) => (
               <a 
                 key={report.id}

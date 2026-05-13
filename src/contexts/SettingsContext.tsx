@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { setCurrencySymbol } from '../lib/utils';
 
 interface BusinessSettings {
   businessName: string;
@@ -16,6 +17,9 @@ interface BusinessSettings {
   showEmail?: boolean;
   showWebsite?: boolean;
   showTaxId?: boolean;
+  currencySymbol?: string;
+  defaultVatRate?: number;
+  invoiceFooter?: string;
 }
 
 interface SettingsContextType {
@@ -33,7 +37,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     // Listen for real-time changes to the settings document
     const unsub = onSnapshot(doc(db, 'settings', 'global'), (docSnap) => {
       if (docSnap.exists()) {
-        setSettings(docSnap.data() as BusinessSettings);
+        const data = docSnap.data() as BusinessSettings;
+        setSettings(data);
+        if (data.currencySymbol) {
+          setCurrencySymbol(data.currencySymbol);
+        }
       } else {
         // Fallback for new accounts
         setSettings({

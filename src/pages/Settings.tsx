@@ -1,16 +1,17 @@
 import { useState, useEffect, FormEvent, useRef, ChangeEvent } from 'react';
 import { doc, getDoc, setDoc, Timestamp, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Building2, Save, Globe, Phone, Mail, MapPin, Hash, Image as ImageIcon, Loader2, Upload, Trash2 } from 'lucide-react';
+import { Building2, Save, Globe, Phone, Mail, MapPin, Hash, Image as ImageIcon, Loader2, Upload, Trash2, Tag, Percent, MessageSquare } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
-import { handleFirestoreError, OperationType } from '../lib/utils';
+import { handleFirestoreError, OperationType, setCurrencySymbol } from '../lib/utils';
 
 export default function Settings() {
   const { profile } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [expenseAccounts, setExpenseAccounts] = useState<{id: string, name: string}[]>([]);
   const [settings, setSettings] = useState({
     businessName: '',
     logoUrl: '',
@@ -24,24 +25,41 @@ export default function Settings() {
     showPhone: true,
     showEmail: true,
     showWebsite: true,
-    showTaxId: true
+    showTaxId: true,
+    currencySymbol: 'Tk',
+    defaultVatRate: 0,
+    invoiceFooter: 'Thank you for your business!',
+    defaultExpenseAccountId: '',
+    defaultExpenseAccountName: ''
   });
 
   useEffect(() => {
-    async function fetchSettings() {
+    async function fetchData() {
       try {
         const settingsRef = doc(db, 'settings', 'global');
         const settingsSnap = await getDoc(settingsRef);
         if (settingsSnap.exists()) {
-          setSettings(settingsSnap.data() as any);
+          const data = settingsSnap.data();
+          setSettings(prev => ({ ...prev, ...data }));
+          if (data.currencySymbol) {
+            setCurrencySymbol(data.currencySymbol);
+          }
         }
+
+        const accountsSnap = await getDocs(collection(db, 'accounts'));
+        const accountsData = accountsSnap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as any))
+          .filter(acc => acc.type === 'Expense')
+          .sort((a, b) => a.name.localeCompare(b.name));
+        
+        setExpenseAccounts(accountsData);
       } catch (error) {
-        console.error("Error fetching settings:", error);
+        console.error("Error fetching settings/accounts:", error);
       } finally {
         setLoading(false);
       }
     }
-    fetchSettings();
+    fetchData();
   }, []);
 
   const isAdmin = profile?.role === 'admin' || profile?.email === 'rezametalbr@gmail.com';
@@ -413,6 +431,83 @@ export default function Settings() {
                     className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-2xl pl-12 pr-6 py-4 text-[var(--text-primary)] focus:border-amber-500 outline-none transition-all font-bold"
                     placeholder="BIN-12345678"
                   />
+                </div>
+              </div>
+
+              {/* Default Preferences & System Settings */}
+              <div className="space-y-6 md:col-span-2">
+                <div className="flex items-center gap-3 py-2 border-b border-[var(--border-color)] mt-4">
+                  <Tag size={20} className="text-amber-500" />
+                  <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-widest">System Defaults & Localization</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-4">
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest px-1">Default Expense Account</label>
+                    <select 
+                      value={settings.defaultExpenseAccountId}
+                      onChange={(e) => {
+                        const account = expenseAccounts.find(a => a.id === e.target.value);
+                        setSettings({ 
+                          ...settings, 
+                          defaultExpenseAccountId: e.target.value,
+                          defaultExpenseAccountName: account?.name || ''
+                        });
+                      }}
+                      className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-2xl px-6 py-4 text-[var(--text-primary)] focus:border-amber-500 outline-none transition-all font-bold"
+                    >
+                      <option value="">No Default (Ask every time)</option>
+                      {expenseAccounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>{acc.name}</option>
+                      ))}
+                    </select>
+                    <p className="text-[9px] text-slate-500 font-bold uppercase tracking-tight px-1 italic">
+                      Automatically selected for new expenses.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest px-1">Base Currency Symbol</label>
+                    <div className="relative group">
+                      <Tag className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={18} />
+                      <input 
+                        type="text"
+                        value={settings.currencySymbol}
+                        onChange={(e) => setSettings({ ...settings, currencySymbol: e.target.value })}
+                        className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-2xl pl-12 pr-6 py-4 text-[var(--text-primary)] focus:border-amber-500 outline-none transition-all font-bold"
+                        placeholder="Tk, $, £, etc."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest px-1">Default VAT / Tax Rate (%)</label>
+                    <div className="relative group">
+                      <Percent className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={18} />
+                      <input 
+                        type="number"
+                        step="0.01"
+                        value={settings.defaultVatRate}
+                        onChange={(e) => setSettings({ ...settings, defaultVatRate: Number(e.target.value) })}
+                        className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-2xl pl-12 pr-6 py-4 text-[var(--text-primary)] focus:border-amber-500 outline-none transition-all font-bold font-mono"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest px-1">Default Invoice Footer Note</label>
+                    <div className="relative group">
+                      <MessageSquare className="absolute left-4 top-6 text-[var(--text-secondary)]" size={18} />
+                      <textarea 
+                        rows={2}
+                        value={settings.invoiceFooter}
+                        onChange={(e) => setSettings({ ...settings, invoiceFooter: e.target.value })}
+                        className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-2xl pl-12 pr-6 py-4 text-[var(--text-primary)] focus:border-amber-500 outline-none transition-all font-bold resize-none"
+                        placeholder="e.g. Items cannot be returned without receipt."
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

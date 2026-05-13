@@ -10,7 +10,8 @@ import {
   PieChart,
   BarChart,
   ArrowRight,
-  Printer
+  Printer,
+  ShoppingBag
 } from 'lucide-react';
 import { collection, onSnapshot, query, where, Timestamp, orderBy } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -28,14 +29,30 @@ interface Expense {
 interface Sale {
   id: string;
   totalAmount: number;
+  items?: any[];
+  date: any;
+}
+
+interface Product {
+  id: string;
+  cost: number;
+}
+
+interface Purchase {
+  id: string;
+  totalAmount: number;
   date: any;
 }
 
 export default function ProfitLossReport() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState('month');
+  const [dateRange, setDateRange] = useState('last30');
+  const [customStart, setCustomStart] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
+  const [customEnd, setCustomEnd] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
@@ -46,16 +63,118 @@ export default function ProfitLossReport() {
       setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
     });
 
+    const unsubPurchases = onSnapshot(collection(db, 'purchases'), (snapshot) => {
+      setPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase)));
+    });
+
+    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+    });
+
     setLoading(false);
     return () => {
       unsubExpenses();
       unsubSales();
+      unsubPurchases();
+      unsubProducts();
     };
   }, []);
 
-  const totalRevenue = sales.reduce((acc, sale) => acc + sale.totalAmount, 0);
-  const totalExpenses = expenses.reduce((acc, exp) => acc + exp.amount, 0);
-  const netProfit = totalRevenue - totalExpenses;
+  const getRangeDates = () => {
+    const now = new Date();
+    const start = new Date(now);
+    const end = new Date(now);
+
+    switch (dateRange) {
+      case 'today':
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case 'yesterday':
+        start.setDate(now.getDate() - 1);
+        start.setHours(0, 0, 0, 0);
+        end.setDate(now.getDate() - 1);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case 'last7':
+        start.setDate(now.getDate() - 7);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case 'last30':
+        start.setDate(now.getDate() - 30);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case 'quarter':
+        const quarter = Math.floor(now.getMonth() / 3);
+        start.setMonth(quarter * 3, 1);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case 'year':
+        start.setMonth(0, 1);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        break;
+      case 'custom':
+        if (customStart) {
+          const s = new Date(customStart);
+          s.setHours(0, 0, 0, 0);
+          start.setTime(s.getTime());
+        }
+        if (customEnd) {
+          const e = new Date(customEnd);
+          e.setHours(23, 59, 59, 999);
+          end.setTime(e.getTime());
+        }
+        break;
+    }
+    return { start, end };
+  };
+
+  const { start, end } = getRangeDates();
+
+  const filteredSales = sales.filter(s => {
+    if (!s.date) return false;
+    const d = s.date.toDate ? s.date.toDate() : new Date(s.date);
+    return d >= start && d <= end;
+  });
+
+  const filteredExpenses = expenses.filter(e => {
+    if (!e.date) return false;
+    const d = e.date.toDate ? e.date.toDate() : new Date(e.date);
+    return d >= start && d <= end;
+  });
+
+  const filteredPurchases = purchases.filter(p => {
+    if (!p.date) return false;
+    const d = p.date.toDate ? p.date.toDate() : new Date(p.date);
+    return d >= start && d <= end;
+  });
+
+  const totalRevenue = filteredSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
+  
+  // Calculate COGS based on items sold
+  const totalCOGS = filteredSales.reduce((acc, sale) => {
+    const saleCOGS = (sale.items || []).reduce((itemAcc, item) => {
+      let itemCost = item.cost;
+      
+      // Fallback to current product cost if not recorded in sale
+      if (itemCost === undefined || itemCost === null) {
+        const product = products.find(p => p.id === item.productId);
+        itemCost = product?.cost || 0;
+      }
+      
+      return itemAcc + (itemCost * (item.quantity || 0));
+    }, 0);
+    return acc + saleCOGS;
+  }, 0);
+
+  const totalPurchases = filteredPurchases.reduce((acc, purchase) => acc + purchase.totalAmount, 0);
+  const totalExpenses = filteredExpenses.reduce((acc, exp) => acc + exp.amount, 0);
+  const grossProfit = totalRevenue - totalCOGS;
+  const netProfit = grossProfit - totalExpenses;
   const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
   const handlePrint = () => {
@@ -63,7 +182,7 @@ export default function ProfitLossReport() {
   };
 
   // Group expenses by account
-  const expensesByAccount = expenses.reduce((acc, exp) => {
+  const expensesByAccount = filteredExpenses.reduce((acc, exp) => {
     const name = exp.accountName || 'Uncategorized';
     acc[name] = (acc[name] || 0) + exp.amount;
     return acc;
@@ -85,21 +204,55 @@ export default function ProfitLossReport() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 relative z-10 print:hidden">
-          <div className="bg-[#0B0D11] border border-slate-800 p-1.5 rounded-2xl flex">
-            {['month', 'quarter', 'year'].map((range) => (
+        <div className="flex flex-col xl:flex-row items-start xl:items-center gap-4 relative z-10 print:hidden">
+          <div className="bg-[#0B0D11] border border-slate-800 p-1.5 rounded-2xl flex flex-wrap gap-1">
+            {[
+              { id: 'today', label: 'Today' },
+              { id: 'yesterday', label: 'Yesterday' },
+              { id: 'last7', label: 'Last 7 Days' },
+              { id: 'last30', label: 'Last 30 Days' },
+              { id: 'quarter', label: 'Quarter' },
+              { id: 'year', label: 'Year' },
+              { id: 'custom', label: 'Custom Range' }
+            ].map((r) => (
               <button
-                key={range}
-                onClick={() => setDateRange(range)}
+                key={r.id}
+                onClick={() => setDateRange(r.id)}
                 className={cn(
-                  "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                  dateRange === range ? "bg-white text-black shadow-lg" : "text-slate-500 hover:text-white"
+                  "px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                  dateRange === r.id ? "bg-white text-black shadow-lg" : "text-slate-500 hover:text-white"
                 )}
               >
-                {range}
+                {r.label}
               </button>
             ))}
           </div>
+
+          {dateRange === 'custom' && (
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-2 bg-[#0B0D11] border border-slate-800 p-1.5 rounded-2xl"
+            >
+              <div className="flex items-center gap-2 px-3">
+                <Calendar size={14} className="text-slate-500" />
+                <input 
+                  type="date" 
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  className="bg-transparent text-[10px] font-black text-white uppercase outline-none"
+                />
+                <span className="text-slate-700 text-xs">-</span>
+                <input 
+                  type="date" 
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  className="bg-transparent text-[10px] font-black text-white uppercase outline-none"
+                />
+              </div>
+            </motion.div>
+          )}
+
           <button 
             onClick={handlePrint}
             className="bg-emerald-500 hover:bg-emerald-600 text-black font-black uppercase tracking-widest text-[10px] px-8 py-4 rounded-2xl transition-all flex items-center gap-3 shadow-xl shadow-emerald-500/20 active:scale-95"
@@ -111,37 +264,49 @@ export default function ProfitLossReport() {
       </div>
 
       {/* Primary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-[#161B22] p-8 rounded-[2rem] border border-slate-800 shadow-xl relative overflow-hidden group">
            <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
              <DollarSign size={80} className="text-blue-500" />
            </div>
            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Total Operating Revenue</p>
-           <h3 className="text-4xl font-black text-white tracking-tighter">{formatCurrency(totalRevenue)}</h3>
+           <h3 className="text-3xl font-black text-white tracking-tighter">{formatCurrency(totalRevenue)}</h3>
            <div className="mt-6 flex items-center gap-2 text-emerald-500 font-bold text-xs">
              <ArrowUpRight size={16} />
-             <span>12.5% increase from last period</span>
+             <span>Revenue for period</span>
            </div>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-[#161B22] p-8 rounded-[2rem] border border-slate-800 shadow-xl relative overflow-hidden group">
            <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
-             <ArrowDownRight size={80} className="text-rose-500" />
+             <ShoppingBag size={80} className="text-rose-500" />
            </div>
-           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Cost of Operations</p>
-           <h3 className="text-4xl font-black text-white tracking-tighter">{formatCurrency(totalExpenses)}</h3>
+           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Cost of Goods Sold</p>
+           <h3 className="text-3xl font-black text-white tracking-tighter">{formatCurrency(totalCOGS)}</h3>
            <div className="mt-6 flex items-center gap-2 text-rose-500 font-bold text-xs">
              <ArrowDownRight size={16} />
-             <span>Expenses are within budget</span>
+             <span>Cost of items sold</span>
            </div>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-emerald-500 p-8 rounded-[2rem] shadow-2xl shadow-emerald-500/10 relative overflow-hidden group">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-[#161B22] p-8 rounded-[2rem] border border-slate-800 shadow-xl relative overflow-hidden group">
+           <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
+             <TrendingUp size={80} className="text-emerald-500" />
+           </div>
+           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Gross Profit</p>
+           <h3 className="text-3xl font-black text-emerald-500 tracking-tighter">{formatCurrency(grossProfit)}</h3>
+           <div className="mt-6 flex items-center gap-2 text-emerald-500 font-bold text-xs">
+             <TrendingUp size={16} />
+             <span>Revenue minus Purchases</span>
+           </div>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="bg-emerald-500 p-8 rounded-[2rem] shadow-2xl shadow-emerald-500/10 relative overflow-hidden group">
            <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-             <TrendingUp size={80} className="text-black" />
+             <PieChart size={80} className="text-black" />
            </div>
            <p className="text-[10px] font-black text-black/50 uppercase tracking-widest mb-2">Net Corporate Profit</p>
-           <h3 className="text-4xl font-black text-black tracking-tighter">{formatCurrency(netProfit)}</h3>
+           <h3 className="text-3xl font-black text-black tracking-tighter">{formatCurrency(netProfit)}</h3>
            <div className="mt-6 flex items-center gap-2 text-black/70 font-black text-xs uppercase tracking-widest">
              <PieChart size={16} />
              <span>Margin: {profitMargin.toFixed(1)}%</span>
@@ -205,18 +370,18 @@ export default function ProfitLossReport() {
           </div>
           <div className="p-10 space-y-8 flex-1">
             <div className="space-y-4">
-               <div className="flex justify-between items-center pb-4 border-b border-slate-800/50">
-                 <span className="text-xs font-bold text-slate-400">Total Revenue</span>
-                 <span className="text-sm font-black text-white">{formatCurrency(totalRevenue)}</span>
-               </div>
-               <div className="flex justify-between items-center pb-4 border-b border-slate-800/50">
-                 <span className="text-xs font-bold text-slate-400">Cost of Goods Sold (COGS)</span>
-                 <span className="text-sm font-black text-slate-300">$0.00</span>
-               </div>
-               <div className="flex justify-between items-center py-4 bg-[#0B0D11] px-6 rounded-2xl border border-slate-800">
-                 <span className="text-xs font-black text-emerald-500 uppercase tracking-widest">Gross Profit</span>
-                 <span className="text-sm font-black text-emerald-500">{formatCurrency(totalRevenue)}</span>
-               </div>
+                <div className="flex justify-between items-center pb-4 border-b border-slate-800/50">
+                  <span className="text-xs font-bold text-slate-400">Total Revenue</span>
+                  <span className="text-sm font-black text-white">{formatCurrency(totalRevenue)}</span>
+                </div>
+                <div className="flex justify-between items-center pb-4 border-b border-slate-800/50">
+                  <span className="text-xs font-bold text-slate-400">Cost of Goods Sold</span>
+                  <span className="text-sm font-black text-rose-500">({formatCurrency(totalCOGS)})</span>
+                </div>
+                <div className="flex justify-between items-center py-4 bg-[#0B0D11] px-6 rounded-2xl border border-slate-800">
+                  <span className="text-xs font-black text-emerald-500 uppercase tracking-widest">Gross Profit</span>
+                  <span className="text-sm font-black text-emerald-500">{formatCurrency(grossProfit)}</span>
+                </div>
             </div>
 
             <div className="space-y-4">

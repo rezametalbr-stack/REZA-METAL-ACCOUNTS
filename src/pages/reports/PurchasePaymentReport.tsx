@@ -29,12 +29,12 @@ export default function PurchasePaymentReport() {
   useEffect(() => {
     const q = query(collection(db, 'purchases'), orderBy('date', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allPurchases = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const allPurchases = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       setPayments(allPurchases.map(p => ({
         id: p.id,
-        amount: (p as any).paidAmount || 0,
+        amount: p.paidAmount || 0,
         date: p.date,
-        supplierName: (p as any).supplierName,
+        supplierName: p.supplierName,
         purchaseId: p.id,
         paymentMethod: 'Standard'
       })));

@@ -33,7 +33,7 @@ export default function SalePaymentReport() {
     // If not, i'll use the 'sales' collection to show 'paidAmount'.
     const q = query(collection(db, 'sales'), orderBy('date', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allSales = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const allSales = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       // Extract payment info from sales
       setPayments(allSales.map(s => ({
         id: s.id,

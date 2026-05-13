@@ -11,11 +11,12 @@ import {
   MoreVertical,
   X,
   ArrowUpDown,
-  Filter
+  Filter,
+  Bell
 } from 'lucide-react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { formatCurrency, cn, handleFirestoreError, OperationType } from '../lib/utils';
+import { formatCurrency, cn, handleFirestoreError, OperationType, CURRENCY_SYMBOL } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Customer {
@@ -38,6 +39,14 @@ export default function Customers() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [customerForPayment, setCustomerForPayment] = useState<Customer | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardHolder, setCardHolder] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: 'balance' | 'totalSale' | 'totalPaid'; direction: 'asc' | 'desc' | null }>({ key: 'balance', direction: null });
   const [showOnlyDue, setShowOnlyDue] = useState(false);
 
@@ -122,6 +131,14 @@ export default function Customers() {
   const handleRecordPayment = (customer: Customer) => {
     setCustomerForPayment(customer);
     setPaymentAmount('');
+    setPaymentMethod('Cash');
+    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setPaymentNote('');
+    setPaymentRef('');
+    setCardNumber('');
+    setCardHolder('');
+    setBankAccount('');
+    setMobileNumber('');
     setIsPaymentModalOpen(true);
   };
 
@@ -136,14 +153,57 @@ export default function Customers() {
     }
 
     try {
+      // 1. Update customer balance
       await updateDoc(doc(db, 'customers', customerForPayment.id), {
         balance: (customerForPayment.balance || 0) - amount,
         totalPaid: (customerForPayment.totalPaid || 0) + amount
       });
+
+      // 2. Record transaction in a dedicated payments collection
+      await addDoc(collection(db, 'payments'), {
+        type: 'customer_payment',
+        entityId: customerForPayment.id,
+        entityName: customerForPayment.name,
+        amount: amount,
+        method: paymentMethod,
+        date: new Date(paymentDate),
+        note: paymentNote,
+        reference: paymentRef,
+        // Additional Details
+        cardNumber: paymentMethod === 'Card' ? cardNumber : null,
+        cardHolder: paymentMethod === 'Card' ? cardHolder : null,
+        bankAccount: paymentMethod === 'Bank Transfer' ? bankAccount : null,
+        mobileNumber: ['Bkash', 'Nagad'].includes(paymentMethod) ? mobileNumber : null,
+        createdAt: new Date()
+      });
+
       setIsPaymentModalOpen(false);
       setCustomerForPayment(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `customers/${customerForPayment.id}`);
+    }
+  };
+
+  const handleQuickReminder = async (customer: Customer) => {
+    try {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      await addDoc(collection(db, 'reminders'), {
+        title: `Follow up: ${customer.name}`,
+        description: `Reminder to contact ${customer.name} for payment or order update.`,
+        dueDate: Timestamp.fromDate(tomorrow),
+        status: 'pending',
+        relatedTo: {
+          type: 'customer',
+          id: customer.id,
+          name: customer.name
+        },
+        createdAt: Timestamp.now()
+      });
+      alert('Reminder set for tomorrow!');
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -185,36 +245,136 @@ export default function Customers() {
                   <X size={16} />
                 </button>
               </div>
-              <form onSubmit={submitPayment} className="p-6 space-y-6">
-                <div>
-                  <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">Payment Amount Received</label>
-                  <div className="relative">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] font-bold text-xs font-mono">Tk</div>
+              <form onSubmit={submitPayment} className="p-6 space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">Payment Amount Received</label>
+                    <div className="relative">
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] font-bold text-xs font-mono">{CURRENCY_SYMBOL}</div>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        required 
+                        autoFocus
+                        value={paymentAmount}
+                        onChange={(e) => setPaymentAmount(e.target.value)}
+                        className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl pl-12 pr-4 py-4 text-2xl font-black text-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-700" 
+                        placeholder="0.00" 
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">Payment Method</label>
+                    <select 
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] outline-none focus:border-emerald-500"
+                    >
+                      {['Cash', 'Card', 'Cheque', 'Bank Transfer', 'Bkash', 'Nagad', 'Others'].map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">Payment Date</label>
                     <input 
-                      type="number" 
-                      step="0.01" 
-                      required 
-                      autoFocus
-                      value={paymentAmount}
-                      onChange={(e) => setPaymentAmount(e.target.value)}
-                      className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl pl-12 pr-4 py-4 text-2xl font-black text-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-700" 
-                      placeholder="0.00" 
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] outline-none focus:border-emerald-500"
                     />
                   </div>
-                  <div className="mt-4 p-4 bg-amber-500/5 rounded-xl border border-amber-500/10">
-                    <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1 italic">Current Balance Adjustment:</p>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-[var(--text-secondary)]">Current Balance:</span>
-                      <span className="font-mono font-bold text-rose-500">{formatCurrency(customerForPayment.balance)}</span>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">Reference / Note</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input 
+                        type="text"
+                        placeholder="Ref # (Optional)"
+                        value={paymentRef}
+                        onChange={(e) => setPaymentRef(e.target.value)}
+                        className="bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-xs text-[var(--text-primary)] outline-none focus:border-emerald-500 w-full"
+                      />
+                      <input 
+                        type="text"
+                        placeholder="Additional Note"
+                        value={paymentNote}
+                        onChange={(e) => setPaymentNote(e.target.value)}
+                        className="bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-xs text-[var(--text-primary)] outline-none focus:border-emerald-500 w-full"
+                      />
                     </div>
-                    {paymentAmount && !isNaN(parseFloat(paymentAmount)) && (
-                      <div className="flex justify-between items-center mt-1 pt-1 border-t border-[var(--border-color)] text-xs">
-                        <span className="text-[var(--text-secondary)]">New Balance:</span>
-                        <span className="font-mono font-bold text-emerald-500">{formatCurrency(customerForPayment.balance - parseFloat(paymentAmount))}</span>
-                      </div>
-                    )}
                   </div>
+
+                  {paymentMethod === 'Card' && (
+                    <>
+                      <div>
+                        <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">Card Number</label>
+                        <input 
+                          type="text"
+                          placeholder="XXXX XXXX XXXX XXXX"
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(e.target.value)}
+                          className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">Card Holder Name</label>
+                        <input 
+                          type="text"
+                          placeholder="Name on Card"
+                          value={cardHolder}
+                          onChange={(e) => setCardHolder(e.target.value)}
+                          className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {paymentMethod === 'Bank Transfer' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">Bank Account Number</label>
+                      <input 
+                        type="text"
+                        placeholder="Account Number"
+                        value={bankAccount}
+                        onChange={(e) => setBankAccount(e.target.value)}
+                        className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
+
+                  {['Bkash', 'Nagad'].includes(paymentMethod) && (
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">{paymentMethod} Mobile Number</label>
+                      <input 
+                        type="text"
+                        placeholder="01XXXXXXXXX"
+                        value={mobileNumber}
+                        onChange={(e) => setMobileNumber(e.target.value)}
+                        className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-xs font-bold text-[var(--text-primary)] outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
                 </div>
+
+                <div className="p-4 bg-amber-500/5 rounded-xl border border-amber-500/10">
+                  <div className="flex justify-between items-center text-[10px] mb-1">
+                    <span className="text-amber-500 font-black uppercase tracking-widest mb-1 italic">Current Balance Adjustment:</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-[var(--text-secondary)]">
+                    <span>Current Balance:</span>
+                    <span className="font-mono font-bold text-rose-500">{formatCurrency(customerForPayment.balance)}</span>
+                  </div>
+                  {paymentAmount && !isNaN(parseFloat(paymentAmount)) && (
+                    <div className="flex justify-between items-center mt-1 pt-1 border-t border-[var(--border-color)] text-xs text-emerald-500">
+                      <span className="font-bold">New Balance:</span>
+                      <span className="font-mono font-black">{formatCurrency(customerForPayment.balance - parseFloat(paymentAmount))}</span>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex gap-3">
                   <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex-1 px-4 py-3 bg-[var(--bg-page)] text-[var(--text-secondary)] font-bold uppercase tracking-widest text-[10px] rounded-xl border border-[var(--border-color)]">Cancel</button>
                   <button type="submit" className="flex-1 px-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-black font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg shadow-emerald-500/10 transition-all active:scale-95">Confirm Receipt</button>
@@ -416,6 +576,13 @@ export default function Customers() {
                           <Edit2 size={14} />
                         </button>
                         <button 
+                          onClick={() => handleQuickReminder(c)}
+                          className="p-1.5 hover:bg-[var(--bg-sidebar)] rounded-lg text-[var(--text-secondary)] hover:text-amber-500 transition-colors"
+                          title="Set Reminder"
+                        >
+                          <Bell size={14} />
+                        </button>
+                        <button 
                           onClick={() => handleDelete(c.id)}
                           className="p-1.5 hover:bg-rose-500/10 rounded-lg text-[var(--text-secondary)] hover:text-rose-500 transition-colors"
                         >
@@ -491,14 +658,14 @@ export default function Customers() {
                     <div>
                       <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">Initial Balance (Debit)</label>
                       <div className="relative">
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] font-bold text-xs">Tk</div>
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] font-bold text-xs">{CURRENCY_SYMBOL}</div>
                         <input type="number" name="balance" defaultValue={editingCustomer?.balance || 0} step="0.01" className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl pl-8 pr-4 py-3 text-[var(--text-primary)] focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all font-bold tracking-tight" />
                       </div>
                     </div>
                     <div>
                       <label className="block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest mb-2 px-1">Total Paid (Till Date)</label>
                       <div className="relative">
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] font-bold text-xs">Tk</div>
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] font-bold text-xs">{CURRENCY_SYMBOL}</div>
                         <input type="number" name="totalPaid" defaultValue={editingCustomer?.totalPaid || 0} step="0.01" className="w-full bg-[var(--bg-page)] border border-[var(--border-color)] rounded-xl pl-8 pr-4 py-3 text-[var(--text-primary)] focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all font-bold tracking-tight" />
                       </div>
                     </div>

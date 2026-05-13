@@ -1,13 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { signInAnonymously, signOut } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
 interface AuthContextType {
-  user: User | null;
+  user: any | null;
   profile: UserProfile | null;
   loading: boolean;
-  signIn: () => Promise<void>;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
 }
 
@@ -20,63 +19,54 @@ interface UserProfile {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
-      if (user) {
-        // Fetch or create profile
-        const profileRef = doc(db, 'users', user.uid);
-        const profileSnap = await getDoc(profileRef);
-        
-        if (profileSnap.exists()) {
-          setProfile(profileSnap.data() as UserProfile);
-        } else {
-          // Default to staff if it's the first time
-          // If first logic is needed for admin, we can handle it
-          const newProfile: UserProfile = {
-            email: user.email || '',
-            role: user.email === 'rezametalbr@gmail.com' ? 'admin' : 'staff',
-            name: user.displayName || 'Unnamed User'
-          };
-          await setDoc(profileRef, newProfile);
-          setProfile(newProfile);
-        }
-      } else {
-        setProfile(null);
-      }
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    // Check local storage for persistent login
+    const savedUser = localStorage.getItem('reza_auth_user');
+    if (savedUser) {
+      const parsedUser = JSON.parse(savedUser);
+      setUser(parsedUser);
+      setProfile({
+        email: 'owner@rezametal.com',
+        role: 'admin',
+        name: 'OWNER'
+      });
+    }
+    setLoading(false);
   }, []);
 
-  const signIn = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      // Ensure we use popup for better compatibility in iframes/hosted environments
-      await signInWithPopup(auth, provider);
-    } catch (error: any) {
-      console.error("Authentication Error:", error);
-      if (error.code === 'auth/unauthorized-domain') {
-        alert("This domain is not authorized for Firebase Authentication. Please add it to your Firebase Console under Auth > Settings > Authorized Domains.");
-      } else if (error.code === 'auth/popup-blocked') {
-        alert("Sign-in popup was blocked by your browser. Please allow popups for this site.");
-      } else {
-        alert("Failed to sign in with Google: " + error.message);
-      }
+  const login = async (username: string, password: string) => {
+    if (username === 'OWNER' && password === '7531') {
+      const mockUser = {
+        uid: 'owner_simulated_id',
+        displayName: 'OWNER',
+        email: 'owner@rezametal.com'
+      };
+      
+      // Save for persistence
+      localStorage.setItem('reza_auth_user', JSON.stringify(mockUser));
+      setUser(mockUser);
+      setProfile({
+        email: 'owner@rezametal.com',
+        role: 'admin',
+        name: 'OWNER'
+      });
+      return true;
     }
+    return false;
   };
 
   const logout = async () => {
-    await signOut(auth);
+    localStorage.removeItem('reza_auth_user');
+    setUser(null);
+    setProfile(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, logout }}>
+    <AuthContext.Provider value={{ user, profile, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

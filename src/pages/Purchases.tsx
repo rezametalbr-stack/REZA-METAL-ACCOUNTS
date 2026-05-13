@@ -14,7 +14,11 @@ import {
   Download,
   Edit2,
   Trash2,
-  Eye
+  Eye,
+  Calendar,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { 
   collection, 
@@ -26,7 +30,7 @@ import {
   Timestamp 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { formatCurrency, formatDate, handleFirestoreError, OperationType, cn } from '../lib/utils';
+import { formatCurrency, formatDate, handleFirestoreError, OperationType, cn, CURRENCY_SYMBOL } from '../lib/utils';
 import { downloadCSV } from '../lib/csvExport';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -59,11 +63,14 @@ export default function Purchases() {
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortField, setSortField] = useState<keyof Purchase>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   // For New Purchase Form
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [selectedSupplier, setSelectedSupplier] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
   const [cartItems, setCartItems] = useState<PurchaseItem[]>([]);
   const [paidAmount, setPaidAmount] = useState(0);
 
@@ -140,6 +147,28 @@ export default function Purchases() {
     p.supplierName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const sortedPurchases = [...filteredPurchases].sort((a, b) => {
+    if (!sortField) return 0;
+    
+    let comparison = 0;
+    if (sortField === 'date') {
+      const dateA = a.date?.seconds || (a.date?.toDate?.()?.getTime() / 1000) || new Date(a.date).getTime() / 1000 || 0;
+      const dateB = b.date?.seconds || (b.date?.toDate?.()?.getTime() / 1000) || new Date(b.date).getTime() / 1000 || 0;
+      comparison = dateA - dateB;
+    } else {
+      const valA = a[sortField];
+      const valB = b[sortField];
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        comparison = valA.localeCompare(valB);
+      } else if (typeof valA === 'number' && typeof valB === 'number') {
+        comparison = valA - valB;
+      }
+    }
+
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
   const handleExport = () => {
     const dataToExport = filteredPurchases.map(p => ({
       purchaseNumber: p.purchaseNumber,
@@ -156,14 +185,28 @@ export default function Purchases() {
       purchaseNumber: 'Purchase #',
       supplierName: 'Supplier Name',
       date: 'Date',
-      totalAmount: 'Total Amount (Tk)',
-      paidAmount: 'Paid Amount (Tk)',
-      balance: 'Balance Due (Tk)',
+      totalAmount: `Total Amount (${CURRENCY_SYMBOL})`,
+      paidAmount: `Paid Amount (${CURRENCY_SYMBOL})`,
+      balance: `Balance Due (${CURRENCY_SYMBOL})`,
       status: 'Status',
       itemsCount: 'Items Count'
     };
 
     downloadCSV(dataToExport, 'Purchases_Report', headers);
+  };
+
+  const handleSort = (field: keyof Purchase) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const SortIcon = ({ field }: { field: keyof Purchase }) => {
+    if (sortField !== field) return <ArrowUpDown size={12} className="ml-1 opacity-30" />;
+    return sortOrder === 'asc' ? <ChevronUp size={12} className="ml-1 text-emerald-500" /> : <ChevronDown size={12} className="ml-1 text-emerald-500" />;
   };
 
   const openEditModal = (purchase: Purchase) => {
@@ -172,6 +215,15 @@ export default function Purchases() {
     setSelectedSupplier(purchase.supplierId);
     setCartItems(purchase.items);
     setPaidAmount(purchase.paidAmount);
+    
+    // Set date for editing
+    if (purchase.date) {
+      const dateObj = typeof purchase.date.toDate === 'function' ? purchase.date.toDate() : new Date(purchase.date);
+      setPurchaseDate(dateObj.toISOString().split('T')[0]);
+    } else {
+      setPurchaseDate(new Date().toISOString().split('T')[0]);
+    }
+    
     setIsModalOpen(true);
   };
 
@@ -281,7 +333,10 @@ export default function Purchases() {
           } else if (oldSupplierSnap?.exists()) {
              const oldUnpaid = oldPurchase.totalAmount - oldPurchase.paidAmount;
              const oldRef = doc(db, 'suppliers', oldPurchase.supplierId);
-             transaction.update(oldRef, { balance: Math.max(0, oldSupplierSnap.data().balance - oldUnpaid) });
+             transaction.update(oldRef, { 
+               balance: Math.max(0, oldSupplierSnap.data().balance - oldUnpaid),
+               totalPaid: Math.max(0, (oldSupplierSnap.data().totalPaid || 0) - oldPurchase.paidAmount)
+             });
           }
         }
 
@@ -297,7 +352,7 @@ export default function Purchases() {
           totalAmount: totalCart,
           paidAmount: paidAmount,
           status: status,
-          date: isEditing && oldPurchase ? oldPurchase.date : Timestamp.now()
+          date: Timestamp.fromDate(new Date(purchaseDate))
         };
 
         transaction.set(purchaseRef, newPurchaseData);
@@ -372,6 +427,7 @@ export default function Purchases() {
               setIsEditing(false);
               setEditingId(null);
               setSelectedSupplier('');
+              setPurchaseDate(new Date().toISOString().split('T')[0]);
               setCartItems([]);
               setPaidAmount(0);
               setIsModalOpen(true);
@@ -412,16 +468,36 @@ export default function Purchases() {
           <table className="w-full">
             <thead>
               <tr className="bg-[#0B0D11]/50">
-                <th className="text-left py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Purchase #</th>
-                <th className="text-left py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Supplier</th>
-                <th className="text-left py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Date</th>
-                <th className="text-right py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Total</th>
-                <th className="text-center py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Status</th>
+                <th className="text-left py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  <button onClick={() => handleSort('purchaseNumber')} className="flex items-center hover:text-white transition-colors">
+                    Purchase # <SortIcon field="purchaseNumber" />
+                  </button>
+                </th>
+                <th className="text-left py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  <button onClick={() => handleSort('supplierName')} className="flex items-center hover:text-white transition-colors">
+                    Supplier <SortIcon field="supplierName" />
+                  </button>
+                </th>
+                <th className="text-left py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  <button onClick={() => handleSort('date')} className="flex items-center hover:text-white transition-colors">
+                    Date <SortIcon field="date" />
+                  </button>
+                </th>
+                <th className="text-right py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  <button onClick={() => handleSort('totalAmount')} className="flex items-center justify-end w-full hover:text-white transition-colors">
+                    Total <SortIcon field="totalAmount" />
+                  </button>
+                </th>
+                <th className="text-center py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  <button onClick={() => handleSort('status')} className="flex items-center justify-center w-full hover:text-white transition-colors">
+                    Status <SortIcon field="status" />
+                  </button>
+                </th>
                 <th className="text-right py-5 px-8 text-[10px] font-black text-slate-500 uppercase tracking-widest">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
-              {filteredPurchases.map((purchase) => (
+              {sortedPurchases.map((purchase) => (
                 <tr key={purchase.id} className="hover:bg-slate-800/30 transition-colors group">
                   <td className="py-5 px-8">
                     <span className="font-mono text-xs font-bold text-slate-400">{purchase.purchaseNumber}</span>
@@ -516,20 +592,33 @@ export default function Purchases() {
               <div className="flex-1 overflow-y-auto p-6 lg:p-10 border-r border-slate-800 bg-[#0F1218]">
                 <div className="max-w-4xl mx-auto space-y-10">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-[#161B22] p-6 rounded-2xl border border-slate-800 space-y-4">
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Supplier / Vendor</label>
-                      <select 
-                        value={selectedSupplier}
-                        onChange={(e) => setSelectedSupplier(e.target.value)}
-                        className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-5 py-3.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 text-white font-bold outline-none font-sans"
-                      >
-                        <option value="">-- Choose Supplier --</option>
-                        {suppliers.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
+                  <div className="bg-[#161B22] p-6 rounded-2xl border border-slate-800 space-y-4 text-left">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Supplier / Vendor</label>
+                    <select 
+                      value={selectedSupplier}
+                      onChange={(e) => setSelectedSupplier(e.target.value)}
+                      className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-5 py-3.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 text-white font-bold outline-none font-sans"
+                    >
+                      <option value="">-- Choose Supplier --</option>
+                      {suppliers.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="bg-[#161B22] p-6 rounded-2xl border border-slate-800 space-y-4 text-left">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Purchase Date</label>
+                    <div className="relative">
+                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                      <input 
+                        type="date"
+                        value={purchaseDate}
+                        onChange={(e) => setPurchaseDate(e.target.value)}
+                        className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl pl-12 pr-5 py-3.5 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 text-white font-bold outline-none font-sans"
+                      />
                     </div>
                   </div>
+                </div>
 
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
@@ -596,7 +685,7 @@ export default function Purchases() {
                              </div>
                           </div>
                           <div className="space-y-2">
-                             <label className="text-[9px] font-black text-slate-600 uppercase">Unit Cost (Tk)</label>
+                             <label className="text-[9px] font-black text-slate-600 uppercase">Unit Cost ({CURRENCY_SYMBOL})</label>
                              <input 
                                type="number" 
                                value={item.cost}
@@ -621,10 +710,15 @@ export default function Purchases() {
                     <span className="text-2xl font-black text-white tracking-tighter">{formatCurrency(totalCart)}</span>
                   </div>
 
+                  <div className="flex justify-between items-center bg-[#0B0D11] p-5 rounded-2xl border border-slate-800 border-dashed">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Balance Remaining</span>
+                    <span className="text-xl font-black text-amber-500 tracking-tighter">{formatCurrency(Math.max(0, totalCart - paidAmount))}</span>
+                  </div>
+
                   <div className="space-y-2 px-1">
                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest px-1 mb-1">Capped Payment</label>
                     <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs font-mono">Tk</div>
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs font-mono">{CURRENCY_SYMBOL}</div>
                       <input 
                         type="number" 
                         value={paidAmount}

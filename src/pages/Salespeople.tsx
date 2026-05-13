@@ -28,6 +28,7 @@ export default function Salespeople() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSalesperson, setEditingSalesperson] = useState<Salesperson | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'salespeople'), 
@@ -73,10 +74,12 @@ export default function Salespeople() {
     }
   };
 
-  const filteredSalespeople = salespeople.filter(s => 
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.phone.includes(searchTerm)
-  );
+  const filteredSalespeople = salespeople.filter(s => {
+    const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.phone.includes(searchTerm);
+    const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <div className="space-y-6">
@@ -97,15 +100,34 @@ export default function Salespeople() {
         </button>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
-        <input 
-          type="text" 
-          placeholder="Search by name or phone..." 
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full bg-[#161B22] border border-slate-800 rounded-2xl py-4 pl-12 pr-4 focus:ring-2 focus:ring-amber-500/20 transition-all text-white placeholder:text-slate-700 font-medium outline-none"
-        />
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
+          <input 
+            type="text" 
+            placeholder="Search by name or phone..." 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-[#161B22] border border-slate-800 rounded-2xl py-4 pl-12 pr-4 focus:ring-2 focus:ring-amber-500/20 transition-all text-white placeholder:text-slate-700 font-medium outline-none"
+          />
+        </div>
+
+        <div className="flex items-center gap-1 p-1 bg-[#161B22] rounded-2xl border border-slate-800 shrink-0">
+          {(['all', 'active', 'inactive'] as const).map((filter) => (
+            <button
+              key={filter}
+              onClick={() => setStatusFilter(filter)}
+              className={cn(
+                "px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                statusFilter === filter 
+                  ? "bg-amber-500 text-black shadow-lg shadow-amber-500/20" 
+                  : "text-slate-500 hover:text-slate-300"
+              )}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

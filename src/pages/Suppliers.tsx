@@ -11,11 +11,12 @@ import {
   Trash2,
   ExternalLink,
   DollarSign,
-  X
+  X,
+  Bell
 } from 'lucide-react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { formatCurrency, handleFirestoreError, OperationType, cn } from '../lib/utils';
+import { formatCurrency, handleFirestoreError, OperationType, cn, CURRENCY_SYMBOL } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Supplier {
@@ -38,6 +39,14 @@ export default function Suppliers() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [supplierForPayment, setSupplierForPayment] = useState<Supplier | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentNote, setPaymentNote] = useState('');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardHolder, setCardHolder] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
   const [formData, setFormData] = useState({
     contactId: '',
     name: '',
@@ -99,6 +108,14 @@ export default function Suppliers() {
   const handleRecordPayment = (supplier: Supplier) => {
     setSupplierForPayment(supplier);
     setPaymentAmount('');
+    setPaymentMethod('Cash');
+    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setPaymentNote('');
+    setPaymentRef('');
+    setCardNumber('');
+    setCardHolder('');
+    setBankAccount('');
+    setMobileNumber('');
     setIsPaymentModalOpen(true);
   };
 
@@ -113,14 +130,57 @@ export default function Suppliers() {
     }
 
     try {
+      // 1. Update supplier balance
       await updateDoc(doc(db, 'suppliers', supplierForPayment.id), {
         balance: (supplierForPayment.balance || 0) - amount,
         totalPaid: (supplierForPayment.totalPaid || 0) + amount
       });
+
+      // 2. Record transaction in a dedicated payments collection
+      await addDoc(collection(db, 'payments'), {
+        type: 'supplier_payment',
+        entityId: supplierForPayment.id,
+        entityName: supplierForPayment.name,
+        amount: amount,
+        method: paymentMethod,
+        date: new Date(paymentDate),
+        note: paymentNote,
+        reference: paymentRef,
+        // Additional Details
+        cardNumber: paymentMethod === 'Card' ? cardNumber : null,
+        cardHolder: paymentMethod === 'Card' ? cardHolder : null,
+        bankAccount: paymentMethod === 'Bank Transfer' ? bankAccount : null,
+        mobileNumber: ['Bkash', 'Nagad'].includes(paymentMethod) ? mobileNumber : null,
+        createdAt: new Date()
+      });
+
       setIsPaymentModalOpen(false);
       setSupplierForPayment(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `suppliers/${supplierForPayment.id}`);
+    }
+  };
+
+  const handleQuickReminder = async (supplier: Supplier) => {
+    try {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      await addDoc(collection(db, 'reminders'), {
+        title: `Follow up: ${supplier.name}`,
+        description: `Reminder to contact ${supplier.name} for supplies or pending payment.`,
+        dueDate: Timestamp.fromDate(tomorrow),
+        status: 'pending',
+        relatedTo: {
+          type: 'supplier',
+          id: supplier.id,
+          name: supplier.name
+        },
+        createdAt: Timestamp.now()
+      });
+      alert('Reminder set for tomorrow!');
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -167,36 +227,136 @@ export default function Suppliers() {
                   <X size={16} />
                 </button>
               </div>
-              <form onSubmit={submitPayment} className="p-6 space-y-6">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Payment Amount Made</label>
-                  <div className="relative">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs font-mono">Tk</div>
+              <form onSubmit={submitPayment} className="p-6 space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Payment Amount Made</label>
+                    <div className="relative">
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold text-xs font-mono">{CURRENCY_SYMBOL}</div>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        required 
+                        autoFocus
+                        value={paymentAmount}
+                        onChange={(e) => setPaymentAmount(e.target.value)}
+                        className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl pl-12 pr-4 py-4 text-2xl font-black text-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-800" 
+                        placeholder="0.00" 
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Payment Method</label>
+                    <select 
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white outline-none focus:border-emerald-500"
+                    >
+                      {['Cash', 'Card', 'Cheque', 'Bank Transfer', 'Bkash', 'Nagad', 'Others'].map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Payment Date</label>
                     <input 
-                      type="number" 
-                      step="0.01" 
-                      required 
-                      autoFocus
-                      value={paymentAmount}
-                      onChange={(e) => setPaymentAmount(e.target.value)}
-                      className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl pl-12 pr-4 py-4 text-2xl font-black text-emerald-500 focus:border-emerald-500 outline-none transition-all placeholder:text-slate-800" 
-                      placeholder="0.00" 
+                      type="date"
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white outline-none focus:border-emerald-500"
                     />
                   </div>
-                  <div className="mt-4 p-4 bg-amber-500/5 rounded-xl border border-amber-500/10">
-                    <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1 italic">Current Payable Adjustment:</p>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-500">Current Payable:</span>
-                      <span className="font-mono font-bold text-rose-500">{formatCurrency(supplierForPayment.balance)}</span>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Reference / Note</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <input 
+                        type="text"
+                        placeholder="Ref # (Optional)"
+                        value={paymentRef}
+                        onChange={(e) => setPaymentRef(e.target.value)}
+                        className="bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-emerald-500 w-full"
+                      />
+                      <input 
+                        type="text"
+                        placeholder="Additional Note"
+                        value={paymentNote}
+                        onChange={(e) => setPaymentNote(e.target.value)}
+                        className="bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-emerald-500 w-full"
+                      />
                     </div>
-                    {paymentAmount && !isNaN(parseFloat(paymentAmount)) && (
-                      <div className="flex justify-between items-center mt-1 pt-1 border-t border-slate-800 text-xs">
-                        <span className="text-slate-500">New Payable:</span>
-                        <span className="font-mono font-bold text-emerald-500">{formatCurrency(supplierForPayment.balance - parseFloat(paymentAmount))}</span>
-                      </div>
-                    )}
                   </div>
+
+                  {paymentMethod === 'Card' && (
+                    <>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Card Number</label>
+                        <input 
+                          type="text"
+                          placeholder="XXXX XXXX XXXX XXXX"
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(e.target.value)}
+                          className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Card Holder Name</label>
+                        <input 
+                          type="text"
+                          placeholder="Name on Card"
+                          value={cardHolder}
+                          onChange={(e) => setCardHolder(e.target.value)}
+                          className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {paymentMethod === 'Bank Transfer' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Bank Account Number</label>
+                      <input 
+                        type="text"
+                        placeholder="Account Number"
+                        value={bankAccount}
+                        onChange={(e) => setBankAccount(e.target.value)}
+                        className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
+
+                  {['Bkash', 'Nagad'].includes(paymentMethod) && (
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">{paymentMethod} Mobile Number</label>
+                      <input 
+                        type="text"
+                        placeholder="01XXXXXXXXX"
+                        value={mobileNumber}
+                        onChange={(e) => setMobileNumber(e.target.value)}
+                        className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-2.5 text-xs font-bold text-white outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
                 </div>
+
+                <div className="p-4 bg-amber-500/5 rounded-xl border border-amber-500/10">
+                  <div className="flex justify-between items-center text-[10px] mb-1">
+                    <span className="text-slate-500 font-black uppercase tracking-widest italic">Payable Adjustment:</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-500">Current Payable:</span>
+                    <span className="font-mono font-bold text-rose-500">{formatCurrency(supplierForPayment.balance)}</span>
+                  </div>
+                  {paymentAmount && !isNaN(parseFloat(paymentAmount)) && (
+                    <div className="flex justify-between items-center mt-1 pt-1 border-t border-slate-800 text-xs text-emerald-500">
+                      <span className="font-bold">New Payable:</span>
+                      <span className="font-mono font-black">{formatCurrency(supplierForPayment.balance - parseFloat(paymentAmount))}</span>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex gap-3">
                   <button type="button" onClick={() => setIsPaymentModalOpen(false)} className="flex-1 px-4 py-3 bg-[#0B0D11] text-slate-500 font-bold uppercase tracking-widest text-[10px] rounded-xl border border-slate-800">Cancel</button>
                   <button type="submit" className="flex-1 px-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-black font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg shadow-emerald-500/10 transition-all active:scale-95">Confirm Payment</button>
@@ -353,6 +513,13 @@ export default function Suppliers() {
                           <Edit2 size={14} />
                         </button>
                         <button 
+                          onClick={() => handleQuickReminder(supplier)}
+                          className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-amber-500 transition-colors"
+                          title="Set Reminder"
+                        >
+                          <Bell size={14} />
+                        </button>
+                        <button 
                           onClick={() => handleDelete(supplier.id)}
                           className="p-1.5 hover:bg-rose-500/10 rounded-lg text-slate-500 hover:text-rose-500 transition-colors"
                         >
@@ -473,7 +640,7 @@ export default function Suppliers() {
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest px-1">Balance (Payable)</label>
                         <div className="relative">
-                          <DollarSign className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
+                          <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 font-bold text-sm tracking-tight">{CURRENCY_SYMBOL}</div>
                           <input
                             type="number"
                             value={formData.balance}
@@ -485,7 +652,7 @@ export default function Suppliers() {
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-emerald-500 uppercase tracking-widest px-1">Total Paid (Till Date)</label>
                         <div className="relative">
-                          <DollarSign className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
+                          <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 font-bold text-sm tracking-tight">{CURRENCY_SYMBOL}</div>
                           <input
                             type="number"
                             value={formData.totalPaid}

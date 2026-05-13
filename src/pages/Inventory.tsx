@@ -10,11 +10,16 @@ import {
   Filter,
   Download,
   X,
-  Eye
+  Eye,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
+  Bell,
+  Clock
 } from 'lucide-react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { formatCurrency, cn, handleFirestoreError, OperationType } from '../lib/utils';
+import { formatCurrency, cn, handleFirestoreError, OperationType, CURRENCY_SYMBOL } from '../lib/utils';
 import { downloadCSV } from '../lib/csvExport';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
@@ -24,6 +29,7 @@ interface Product {
   name: string;
   sku: string;
   price: number;
+  cost: number;
   stock: number;
   unit: string;
   category: string;
@@ -38,6 +44,8 @@ export default function Inventory() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof Product; direction: 'asc' | 'desc' | null }>({ key: 'name', direction: 'asc' });
 
   useEffect(() => {
     if (searchParams.get('add') === 'true') {
@@ -62,17 +70,96 @@ export default function Inventory() {
     p.sku.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleExport = () => {
-    const headers = {
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    if (!sortConfig.key || !sortConfig.direction) return 0;
+    
+    const aValue = a[sortConfig.key];
+    const bValue = b[sortConfig.key];
+
+    if (aValue === undefined || bValue === undefined) return 0;
+
+    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const handleSort = (key: keyof Product) => {
+    setSortConfig(prev => {
+      if (prev.key === key) {
+        if (prev.direction === 'asc') return { key, direction: 'desc' };
+        if (prev.direction === 'desc') return { key: 'name', direction: 'asc' }; // Reset to default
+      }
+      return { key, direction: 'asc' };
+    });
+  };
+
+  const handleQuickReminder = async (product: Product) => {
+    try {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      await addDoc(collection(db, 'reminders'), {
+        title: `Follow up: ${product.name}`,
+        description: `Reminder to check stock for ${product.name} (SKU: ${product.sku})`,
+        dueDate: Timestamp.fromDate(tomorrow),
+        status: 'pending',
+        relatedTo: {
+          type: 'inventory',
+          id: product.id,
+          name: product.name
+        },
+        createdAt: Timestamp.now()
+      });
+      alert('Reminder set for tomorrow!');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleExport = (mode: 'all' | 'low-stock' | 'commissions' = 'all') => {
+    let exportData = [...filteredProducts];
+    let filename = 'Inventory_Catalog';
+    let headers: Record<string, string> = {
       name: 'Product Name',
       sku: 'SKU',
       category: 'Category',
-      price: 'Unit Price (Tk)',
-      stock: 'Stock',
+      price: `Unit Price (${CURRENCY_SYMBOL})`,
+      cost: `Default Cost (${CURRENCY_SYMBOL})`,
+      margin: 'Margin (%)',
+      stock: 'Current Stock',
       unit: 'Unit',
       commissionRate: 'Commission Rate (%)'
     };
-    downloadCSV(filteredProducts, 'Inventory_Catalog', headers);
+
+    if (mode === 'low-stock') {
+      exportData = products.filter(p => p.stock <= 10);
+      filename = 'Low_Stock_Report';
+      headers = {
+        name: 'Product Name',
+        sku: 'SKU',
+        stock: 'Stock Left',
+        unit: 'Unit',
+        category: 'Category'
+      };
+    } else if (mode === 'commissions') {
+      filename = 'Commission_Rates_Report';
+      headers = {
+        name: 'Product Name',
+        sku: 'SKU',
+        price: `Price (${CURRENCY_SYMBOL})`,
+        margin: 'Margin (%)',
+        commissionRate: 'Commission (%)',
+        category: 'Category'
+      };
+    }
+
+    const dataWithMargin = exportData.map(p => ({
+      ...p,
+      margin: p.price > 0 ? (((p.price - p.cost) / p.price) * 100).toFixed(1) + '%' : '0%'
+    }));
+
+    downloadCSV(dataWithMargin, filename, headers);
+    setIsExportMenuOpen(false);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -82,6 +169,7 @@ export default function Inventory() {
       name: formData.get('name') as string,
       sku: formData.get('sku') as string,
       price: Number(formData.get('price')),
+      cost: Number(formData.get('cost')),
       stock: Number(formData.get('stock')),
       unit: formData.get('unit') as string,
       category: formData.get('category') as string,
@@ -151,13 +239,60 @@ export default function Inventory() {
               <Filter size={14} />
               <span>Filter</span>
             </button>
-            <button 
-              onClick={handleExport}
-              className="px-4 py-2 text-slate-400 hover:bg-slate-800 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all"
-            >
-              <Download size={14} />
-              <span>Export</span>
-            </button>
+            
+            <div className="relative">
+              <button 
+                onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                className={cn(
+                  "px-4 py-2 rounded-xl flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all",
+                  isExportMenuOpen ? "bg-amber-500 text-black shadow-lg" : "text-slate-400 hover:bg-slate-800"
+                )}
+              >
+                <Download size={14} />
+                <span>Export Data</span>
+              </button>
+
+              <AnimatePresence>
+                {isExportMenuOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setIsExportMenuOpen(false)} 
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 mt-2 w-56 bg-[#161B22] border border-slate-800 rounded-2xl shadow-2xl z-20 overflow-hidden"
+                    >
+                      <div className="p-2 space-y-1">
+                        <button 
+                          onClick={() => handleExport('all')}
+                          className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 transition-colors flex flex-col"
+                        >
+                          <span className="text-[10px] font-black text-white uppercase tracking-widest">Complete Catalog</span>
+                          <span className="text-[8px] font-bold text-slate-500 uppercase">Export all inventory details</span>
+                        </button>
+                        <button 
+                          onClick={() => handleExport('low-stock')}
+                          className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 transition-colors flex flex-col group"
+                        >
+                          <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest group-hover:text-rose-400">Low Stock Alerts</span>
+                          <span className="text-[8px] font-bold text-slate-500 uppercase">Export items with stock ≤ 10</span>
+                        </button>
+                        <button 
+                          onClick={() => handleExport('commissions')}
+                          className="w-full text-left px-4 py-3 rounded-xl hover:bg-slate-800 transition-colors flex flex-col group"
+                        >
+                          <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest group-hover:text-emerald-400">Commission Sheet</span>
+                          <span className="text-[8px] font-bold text-slate-500 uppercase">Price & Commission focus</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
 
@@ -165,22 +300,58 @@ export default function Inventory() {
           <table className="w-full text-left border-collapse">
             <thead className="bg-[#0B0D11]/50 text-slate-500 text-[10px] font-black uppercase tracking-widest border-b border-slate-800">
               <tr>
-                <th className="px-6 py-5">Product Details</th>
-                <th className="px-6 py-5">SKU / ID</th>
-                <th className="px-6 py-5">Category</th>
-                <th className="px-6 py-5">Unit Price</th>
+                <th className="px-6 py-5 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('name')}>
+                  <div className="flex items-center gap-2">
+                    Product Details
+                    {sortConfig.key === 'name' ? (
+                      sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-amber-500" /> : <ChevronDown size={12} className="text-amber-500" />
+                    ) : <ArrowUpDown size={12} className="opacity-30" />}
+                  </div>
+                </th>
+                <th className="px-6 py-5 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('sku')}>
+                  <div className="flex items-center gap-2">
+                    SKU / ID
+                    {sortConfig.key === 'sku' ? (
+                      sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-amber-500" /> : <ChevronDown size={12} className="text-amber-500" />
+                    ) : <ArrowUpDown size={12} className="opacity-30" />}
+                  </div>
+                </th>
+                <th className="px-6 py-5 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('category')}>
+                  <div className="flex items-center gap-2">
+                    Category
+                    {sortConfig.key === 'category' ? (
+                      sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-amber-500" /> : <ChevronDown size={12} className="text-amber-500" />
+                    ) : <ArrowUpDown size={12} className="opacity-30" />}
+                  </div>
+                </th>
+                <th className="px-6 py-5 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('price')}>
+                  <div className="flex items-center gap-2">
+                    Unit Price
+                    {sortConfig.key === 'price' ? (
+                      sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-amber-500" /> : <ChevronDown size={12} className="text-amber-500" />
+                    ) : <ArrowUpDown size={12} className="opacity-30" />}
+                  </div>
+                </th>
+                <th className="px-6 py-5 text-center">Margin (%)</th>
                 <th className="px-6 py-5 text-center">Commission</th>
-                <th className="px-6 py-5">Stock Level</th>
+                <th className="px-6 py-5 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('stock')}>
+                  <div className="flex items-center gap-2">
+                    Stock Level
+                    {sortConfig.key === 'stock' ? (
+                      sortConfig.direction === 'asc' ? <ChevronUp size={12} className="text-amber-500" /> : <ChevronDown size={12} className="text-amber-500" />
+                    ) : <ArrowUpDown size={12} className="opacity-30" />}
+                  </div>
+                </th>
                 <th className="px-6 py-5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
               {loading ? (
-                <tr><td colSpan={6} className="text-center py-12 text-slate-500 font-black uppercase text-xs tracking-widest">Loading inventory...</td></tr>
-              ) : filteredProducts.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-12 text-slate-600 font-black uppercase text-xs tracking-widest">No products found</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-slate-500 font-black uppercase text-xs tracking-widest">Loading inventory...</td></tr>
+              ) : sortedProducts.length === 0 ? (
+                <tr><td colSpan={7} className="text-center py-12 text-slate-600 font-black uppercase text-xs tracking-widest">No products found</td></tr>
               ) : (
-                filteredProducts.map((p) => (
+                sortedProducts.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-800/10 transition-colors group">
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-4">
@@ -201,6 +372,20 @@ export default function Inventory() {
                       </span>
                     </td>
                     <td className="px-6 py-5 font-black text-white text-lg tracking-tighter">{formatCurrency(p.price)}</td>
+                    <td className="px-6 py-5 text-center">
+                      {p.price > 0 ? (
+                        <span className={cn(
+                          "font-mono text-xs font-bold px-2 py-1 rounded-lg",
+                          ((p.price - p.cost) / p.price) > 0.3 ? "text-emerald-500 bg-emerald-500/5 border border-emerald-500/10" :
+                          ((p.price - p.cost) / p.price) > 0.15 ? "text-amber-500 bg-amber-500/5 border border-amber-500/10" :
+                          "text-rose-500 bg-rose-500/5 border border-rose-500/10"
+                        )}>
+                          {(((p.price - p.cost) / p.price) * 100).toFixed(1)}%
+                        </span>
+                      ) : (
+                        <span className="text-slate-600 font-bold text-[10px]">N/A</span>
+                      )}
+                    </td>
                     <td className="px-6 py-5 text-center">
                       <span className="font-mono text-xs font-bold text-emerald-500 bg-emerald-500/5 border border-emerald-500/10 px-2 py-1 rounded-lg">
                         {p.commissionRate || 0}%
@@ -243,6 +428,13 @@ export default function Inventory() {
                           className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-slate-500 hover:text-white hover:border-amber-500 transition-all shadow-lg"
                         >
                           <Edit2 size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleQuickReminder(p)}
+                          className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-slate-500 hover:text-amber-500 hover:border-amber-500 transition-all shadow-lg"
+                          title="Set Reminder"
+                        >
+                          <Bell size={16} />
                         </button>
                         <button 
                           onClick={() => handleDelete(p.id)}
@@ -305,10 +497,17 @@ export default function Inventory() {
                     <input name="category" defaultValue={editingProduct?.category} className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl px-4 py-3.5 text-white focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all placeholder:text-slate-700" placeholder="Fittings" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Unit Price</label>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Unit Price (Sale)</label>
                     <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 font-bold text-xs">Tk</div>
-                      <input type="number" name="price" step="0.01" defaultValue={editingProduct?.price} required className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl pl-8 pr-4 py-3.5 text-amber-500 font-black text-lg focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all tracking-tighter tabular-nums" />
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 font-bold text-xs">{CURRENCY_SYMBOL}</div>
+                      <input type="number" name="price" step="0.01" defaultValue={editingProduct?.price} required className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl pl-8 pr-4 py-3.5 text-emerald-500 font-black text-lg focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all tracking-tighter tabular-nums" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Standard Cost (Purchase)</label>
+                    <div className="relative">
+                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 font-bold text-xs">{CURRENCY_SYMBOL}</div>
+                      <input type="number" name="cost" step="0.01" defaultValue={editingProduct?.cost} required className="w-full bg-[#0B0D11] border border-slate-800 rounded-xl pl-8 pr-4 py-3.5 text-rose-500 font-black text-lg focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none transition-all tracking-tighter tabular-nums" />
                     </div>
                   </div>
                   <div>
