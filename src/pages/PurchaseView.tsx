@@ -64,6 +64,12 @@ export default function PurchaseView() {
         letterRendering: true,
         backgroundColor: '#ffffff',
         onclone: (doc: Document) => {
+          // Remove oklch color functions from all style tags as they crash html2canvas
+          const styleTags = doc.getElementsByTagName('style');
+          for (let i = 0; i < styleTags.length; i++) {
+            styleTags[i].innerHTML = styleTags[i].innerHTML.replace(/oklch\([^)]+\)/g, '#000000');
+          }
+
           const style = doc.createElement('style');
           style.innerHTML = `
             * {
@@ -286,16 +292,46 @@ export default function PurchaseView() {
 
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          body { background: white !important; }
+          @page { size: auto; margin: 0; }
+          body { 
+            background: white !important; 
+            color: black !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          :root {
+            --bg-page: #ffffff !important;
+            --bg-card: #ffffff !important;
+            --text-primary: #000000 !important;
+            --text-secondary: #475569 !important;
+            --border-color: #e2e8f0 !important;
+          }
           .print\\:hidden { display: none !important; }
-          main { padding: 0 !important; }
-          header { display: none !important; }
-          aside { display: none !important; }
+          main { 
+            padding: 0 !important; 
+            margin: 0 !important;
+            overflow: visible !important;
+            display: block !important;
+          }
+          header, aside, .flex-none { display: none !important; }
           #invoice-content { 
             border: none !important; 
             border-radius: 0 !important;
             box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
           }
+          /* Force text colors for visibility */
+          .text-white { color: black !important; }
+          .text-slate-400, .text-slate-500 { color: #475569 !important; }
+          .text-emerald-500 { color: #059669 !important; }
+          .bg-[#0B0D11], .bg-[#161B22], .bg-[#0B0D11]/30 { background: #f8fafc !important; }
+          .border-slate-800 { border-color: #e2e8f0 !important; }
         }
 
         /* PDF Export Styles */

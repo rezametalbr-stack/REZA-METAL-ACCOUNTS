@@ -27,7 +27,9 @@ import {
   runTransaction, 
   query, 
   orderBy, 
-  Timestamp 
+  Timestamp,
+  where,
+  getDocs
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, formatDate, handleFirestoreError, OperationType, cn, CURRENCY_SYMBOL } from '../lib/utils';
@@ -65,6 +67,7 @@ export default function Purchases() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<keyof Purchase>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   
   // For New Purchase Form
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -228,26 +231,30 @@ export default function Purchases() {
   };
 
   const handleDeletePurchase = async (purchase: Purchase) => {
+    if (deletingIds.has(purchase.id)) return;
     if (!window.confirm('Are you sure you want to delete this purchase? This will revert stock and supplier balance.')) return;
 
+    setDeletingIds(prev => new Set(prev).add(purchase.id));
     try {
       await runTransaction(db, async (transaction) => {
-        // 1. Prepare references and perform ALL reads first
-        const productRefs = purchase.items.map(item => doc(db, 'products', item.productId));
-        const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
-        
-        const supplierRef = doc(db, 'suppliers', purchase.supplierId);
-        const supplierSnap = await transaction.get(supplierRef);
-
+        // 1. Prepare references
         const purchaseRef = doc(db, 'purchases', purchase.id);
+        const supplierRef = doc(db, 'suppliers', purchase.supplierId);
+        const items = purchase.items || [];
+        const productRefs = items.map(item => doc(db, 'products', item.productId));
 
-        // 2. Perform all writes
+        // 2. Perform all reads first
+        const supplierSnap = await transaction.get(supplierRef);
+        const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+
+        // 3. Perform all writes
         // Revert Product Stock
-        purchase.items.forEach((item, index) => {
+        items.forEach((item, index) => {
           const snap = productSnaps[index];
           if (snap.exists()) {
             const currentData = snap.data();
-            const newStock = Math.max(0, currentData.stock - item.quantity);
+            // Deleting a purchase means we REMOVE the stock we bought
+            const newStock = Math.max(0, (currentData.stock || 0) - item.quantity);
             transaction.update(productRefs[index], { stock: newStock });
           }
         });
@@ -255,20 +262,30 @@ export default function Purchases() {
         // Revert Supplier Balance and Total Paid
         if (supplierSnap.exists()) {
           const currentData = supplierSnap.data();
-          const currentBalance = currentData.balance || 0;
-          const currentTotalPaid = currentData.totalPaid || 0;
           const unpaidAmount = purchase.totalAmount - purchase.paidAmount;
+          
           transaction.update(supplierRef, { 
-            balance: Math.max(0, currentBalance - unpaidAmount),
-            totalPaid: Math.max(0, currentTotalPaid - purchase.paidAmount)
+            balance: Math.max(0, (currentData.balance || 0) - unpaidAmount),
+            totalPaid: Math.max(0, (currentData.totalPaid || 0) - purchase.paidAmount)
           });
         }
 
         // Delete Purchase
         transaction.delete(purchaseRef);
+        
+        // Delete associated payments if they exist
+        const paymentsSnap = await getDocs(query(collection(db, 'payments'), where('purchaseId', '==', purchase.id)));
+        paymentsSnap.forEach(pDoc => transaction.delete(pDoc.ref));
       });
+      alert('Purchase record deleted successfully.');
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `purchases/${purchase.id}`);
+    } finally {
+      setDeletingIds(prev => {
+        const next = new Set(prev);
+        next.delete(purchase.id);
+        return next;
+      });
     }
   };
 
@@ -543,9 +560,13 @@ export default function Purchases() {
                       </button>
                       <button 
                         onClick={() => handleDeletePurchase(purchase)}
-                        className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                        disabled={deletingIds.has(purchase.id)}
+                        className={cn(
+                          "p-2 transition-all rounded-lg",
+                          deletingIds.has(purchase.id) ? "opacity-50 cursor-not-allowed" : "text-slate-400 hover:text-rose-500 hover:bg-rose-500/10"
+                        )}
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={14} className={cn(deletingIds.has(purchase.id) && "animate-spin")} />
                       </button>
                     </div>
                   </td>

@@ -23,16 +23,6 @@ import {
 } from 'recharts';
 import { motion } from 'motion/react';
 
-const data = [
-  { name: 'Jan', sales: 4000 },
-  { name: 'Feb', sales: 3000 },
-  { name: 'Mar', sales: 2000 },
-  { name: 'Apr', sales: 2780 },
-  { name: 'May', sales: 1890 },
-  { name: 'Jun', sales: 2390 },
-  { name: 'Jul', sales: 3490 },
-];
-
 import { useTheme } from '../contexts/ThemeContext';
 import { useSettings } from '../contexts/SettingsContext';
 
@@ -46,30 +36,49 @@ export default function Dashboard() {
     customerCount: 0,
     lowStockItems: 0
   });
+  const [chartData, setChartData] = useState<{name: string, sales: number}[]>([]);
 
   useEffect(() => {
     async function fetchData() {
-      const products = await getDocs(collection(db, 'products'));
-      const customers = await getDocs(collection(db, 'customers'));
-      const sales = await getDocs(collection(db, 'sales'));
-      const expenses = await getDocs(collection(db, 'expenses'));
+      const productsSnap = await getDocs(collection(db, 'products'));
+      const customersSnap = await getDocs(collection(db, 'customers'));
+      const salesSnap = await getDocs(collection(db, 'sales'));
+      const expensesSnap = await getDocs(collection(db, 'expenses'));
 
       let totalS = 0;
-      sales.forEach(doc => totalS += doc.data().totalAmount || 0);
+      const monthlySales: Record<string, number> = {};
+      
+      salesSnap.forEach(doc => {
+        const data = doc.data();
+        const amount = data.totalAmount || 0;
+        totalS += amount;
+        
+        const date = data.date?.toDate ? data.date.toDate() : new Date(data.date);
+        const month = date.toLocaleString('default', { month: 'short' });
+        monthlySales[month] = (monthlySales[month] || 0) + amount;
+      });
+
+      // Format for recharts
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const formattedChartData = months.map(month => ({
+        name: month,
+        sales: monthlySales[month] || 0
+      }));
+      setChartData(formattedChartData);
 
       let totalE = 0;
-      expenses.forEach(doc => totalE += doc.data().amount || 0);
+      expensesSnap.forEach(doc => totalE += doc.data().amount || 0);
 
       let lowStock = 0;
-      products.forEach(doc => {
+      productsSnap.forEach(doc => {
         if (doc.data().stock <= 10) lowStock++;
       });
 
       setMetrics({
         totalSales: totalS,
         totalExpenses: totalE,
-        inventoryCount: products.size,
-        customerCount: customers.size,
+        inventoryCount: productsSnap.size,
+        customerCount: customersSnap.size,
         lowStockItems: lowStock
       });
     }
@@ -144,7 +153,7 @@ export default function Dashboard() {
           </div>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data}>
+              <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15}/>

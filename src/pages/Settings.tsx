@@ -1,7 +1,7 @@
 import { useState, useEffect, FormEvent, useRef, ChangeEvent } from 'react';
 import { doc, getDoc, setDoc, Timestamp, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Building2, Save, Globe, Phone, Mail, MapPin, Hash, Image as ImageIcon, Loader2, Upload, Trash2, Tag, Percent, MessageSquare } from 'lucide-react';
+import { Building2, Save, Globe, Phone, Mail, MapPin, Hash, Image as ImageIcon, Loader2, Upload, Trash2, Tag, Percent, MessageSquare, AlertTriangle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType, setCurrencySymbol } from '../lib/utils';
@@ -84,23 +84,44 @@ export default function Settings() {
     if (!isAdmin) return;
     if (!window.confirm('WARNING: This will PERMANENTLY delete ALL sales and commission records. This action cannot be undone. It will also reset customer balances and paid totals. Continue?')) return;
 
+    setSaving(true);
     try {
       const salesSnap = await getDocs(collection(db, 'sales'));
       const commissionsSnap = await getDocs(collection(db, 'commissions'));
       const customersSnap = await getDocs(collection(db, 'customers'));
       
-      const batch = writeBatch(db);
+      const salesDocs = salesSnap.docs;
+      for (let i = 0; i < salesDocs.length; i += 500) {
+        const chunk = salesDocs.slice(i, i + 500);
+        const batch = writeBatch(db);
+        chunk.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
+
+      const commissionDocs = commissionsSnap.docs;
+      for (let i = 0; i < commissionDocs.length; i += 500) {
+        const chunk = commissionDocs.slice(i, i + 500);
+        const batch = writeBatch(db);
+        chunk.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
+
+      const customerDocs = customersSnap.docs;
+      for (let i = 0; i < customerDocs.length; i += 500) {
+        const chunk = customerDocs.slice(i, i + 500);
+        const batch = writeBatch(db);
+        chunk.forEach(doc => {
+          batch.update(doc.ref, { balance: 0, totalPaid: 0, totalPurchased: 0 });
+        });
+        await batch.commit();
+      }
       
-      salesSnap.forEach(doc => batch.delete(doc.ref));
-      commissionsSnap.forEach(doc => batch.delete(doc.ref));
-      customersSnap.forEach(doc => {
-        batch.update(doc.ref, { balance: 0, totalPaid: 0 });
-      });
-      
-      await batch.commit();
       alert('All sales data has been cleared.');
+      window.location.reload();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'sales/bulk');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -108,21 +129,35 @@ export default function Settings() {
     if (!isAdmin) return;
     if (!window.confirm('WARNING: This will PERMANENTLY delete ALL purchase records. This action cannot be undone. It will also reset supplier balances and paid totals. Continue?')) return;
 
+    setSaving(true);
     try {
       const purchasesSnap = await getDocs(collection(db, 'purchases'));
       const suppliersSnap = await getDocs(collection(db, 'suppliers'));
       
-      const batch = writeBatch(db);
+      const purchaseDocs = purchasesSnap.docs;
+      for (let i = 0; i < purchaseDocs.length; i += 500) {
+        const chunk = purchaseDocs.slice(i, i + 500);
+        const batch = writeBatch(db);
+        chunk.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
+
+      const supplierDocs = suppliersSnap.docs;
+      for (let i = 0; i < supplierDocs.length; i += 500) {
+        const chunk = supplierDocs.slice(i, i + 500);
+        const batch = writeBatch(db);
+        chunk.forEach(doc => {
+          batch.update(doc.ref, { balance: 0, totalPaid: 0 });
+        });
+        await batch.commit();
+      }
       
-      purchasesSnap.forEach(doc => batch.delete(doc.ref));
-      suppliersSnap.forEach(doc => {
-        batch.update(doc.ref, { balance: 0, totalPaid: 0 });
-      });
-      
-      await batch.commit();
       alert('All purchase data has been cleared.');
+      window.location.reload();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'purchases/bulk');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -130,14 +165,22 @@ export default function Settings() {
     if (!isAdmin) return;
     if (!window.confirm('WARNING: This will PERMANENTLY delete ALL expense records. Continue?')) return;
 
+    setSaving(true);
     try {
       const snap = await getDocs(collection(db, 'expenses'));
-      const batch = writeBatch(db);
-      snap.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
+      const docs = snap.docs;
+      for (let i = 0; i < docs.length; i += 500) {
+        const chunk = docs.slice(i, i + 500);
+        const batch = writeBatch(db);
+        chunk.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
       alert('All expense records have been cleared.');
+      window.location.reload();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'expenses/bulk');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -145,14 +188,76 @@ export default function Settings() {
     if (!isAdmin) return;
     if (!window.confirm('WARNING: This will PERMANENTLY delete ALL journal entries. Continue?')) return;
 
+    setSaving(true);
     try {
       const snap = await getDocs(collection(db, 'journalEntries'));
-      const batch = writeBatch(db);
-      snap.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
+      const docs = snap.docs;
+      for (let i = 0; i < docs.length; i += 500) {
+        const chunk = docs.slice(i, i + 500);
+        const batch = writeBatch(db);
+        chunk.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
       alert('All journal entries have been cleared.');
+      window.location.reload();
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'journalEntries/bulk');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetAllData = async () => {
+    if (!isAdmin) return;
+    if (!window.confirm('CRITICAL WARNING: This will PERMANENTLY delete ALL sales, purchases, expenses, journals, commissions, payments, stock adjustments, purchase orders, and reminders. CUSTOMER AND SUPPLIER BALANCES WILL BE RESET TO ZERO. This action is IRREVERSIBLE. Are you absolutely sure?')) return;
+
+    setSaving(true);
+    try {
+      const collectionsToClear = [
+        'sales', 'purchases', 'expenses', 'journalEntries', 
+        'commissions', 'payments', 'stockAdjustments', 
+        'purchaseOrders', 'reminders'
+      ];
+
+      for (const collName of collectionsToClear) {
+        const snap = await getDocs(collection(db, collName));
+        const docs = snap.docs;
+        
+        // Process in chunks of 500 (Firestore limit)
+        for (let i = 0; i < docs.length; i += 500) {
+          const chunk = docs.slice(i, i + 500);
+          const batch = writeBatch(db);
+          chunk.forEach(doc => batch.delete(doc.ref));
+          await batch.commit();
+        }
+      }
+
+      // Reset Customer balances in chunks
+      const customersSnap = await getDocs(collection(db, 'customers'));
+      const customerDocs = customersSnap.docs;
+      for (let i = 0; i < customerDocs.length; i += 500) {
+        const chunk = customerDocs.slice(i, i + 500);
+        const batch = writeBatch(db);
+        chunk.forEach(doc => batch.update(doc.ref, { balance: 0, totalPaid: 0, totalPurchased: 0 }));
+        await batch.commit();
+      }
+
+      // Reset Supplier balances in chunks
+      const suppliersSnap = await getDocs(collection(db, 'suppliers'));
+      const supplierDocs = suppliersSnap.docs;
+      for (let i = 0; i < supplierDocs.length; i += 500) {
+        const chunk = supplierDocs.slice(i, i + 500);
+        const batch = writeBatch(db);
+        chunk.forEach(doc => batch.update(doc.ref, { balance: 0, totalPaid: 0 }));
+        await batch.commit();
+      }
+
+      alert('All transactional data has been successfully cleared. The system is now blank.');
+      window.location.reload();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'bulk/all');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -554,7 +659,8 @@ export default function Settings() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <button 
                 onClick={handleClearSales}
-                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 transition-all group"
+                disabled={saving}
+                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 disabled:opacity-50 transition-all group"
               >
                 <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                   <Trash2 size={18} className="text-rose-500" />
@@ -565,7 +671,8 @@ export default function Settings() {
 
               <button 
                 onClick={handleClearPurchases}
-                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 transition-all group"
+                disabled={saving}
+                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 disabled:opacity-50 transition-all group"
               >
                 <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                   <Trash2 size={18} className="text-rose-500" />
@@ -576,7 +683,8 @@ export default function Settings() {
 
               <button 
                 onClick={handleClearExpenses}
-                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 transition-all group"
+                disabled={saving}
+                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 disabled:opacity-50 transition-all group"
               >
                 <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                   <Trash2 size={18} className="text-rose-500" />
@@ -587,13 +695,26 @@ export default function Settings() {
 
               <button 
                 onClick={handleClearJournals}
-                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 transition-all group"
+                disabled={saving}
+                className="flex flex-col items-center justify-center p-6 bg-[#0B0D11] border border-slate-800 rounded-3xl hover:border-rose-500/50 disabled:opacity-50 transition-all group"
               >
                 <div className="h-10 w-10 rounded-xl bg-rose-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                   <Trash2 size={18} className="text-rose-500" />
                 </div>
                 <span className="text-[10px] font-black text-white uppercase tracking-widest">Clear Journals</span>
                 <span className="text-[8px] text-slate-500 mt-1">Manual Ledger Entries</span>
+              </button>
+
+              <button 
+                onClick={handleResetAllData}
+                disabled={saving}
+                className="flex flex-col items-center justify-center p-6 bg-rose-500/10 border-2 border-rose-500/30 rounded-3xl hover:bg-rose-500/20 hover:border-rose-500 transition-all group md:col-span-2 lg:col-span-4"
+              >
+                <div className="h-12 w-12 rounded-xl bg-rose-500 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg shadow-rose-500/20">
+                  <AlertTriangle size={24} className="text-white" />
+                </div>
+                <span className="text-xs font-black text-white uppercase tracking-[0.2em]">Factory Reset (Wipe All Data)</span>
+                <span className="text-[9px] text-rose-500 mt-1 font-bold uppercase">Clear everything except structural master data (Products/Accounts)</span>
               </button>
             </div>
           </div>

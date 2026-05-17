@@ -51,9 +51,14 @@ export default function InvoiceView() {
   };
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    // Attempt to copy the current URL
+    try {
+      navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+    }
   };
 
   const handleExportPDF = async () => {
@@ -73,6 +78,12 @@ export default function InvoiceView() {
         letterRendering: true,
         backgroundColor: '#ffffff',
         onclone: (doc: Document) => {
+          // Remove oklch color functions from all style tags as they crash html2canvas
+          const styleTags = doc.getElementsByTagName('style');
+          for (let i = 0; i < styleTags.length; i++) {
+            styleTags[i].innerHTML = styleTags[i].innerHTML.replace(/oklch\([^)]+\)/g, '#000000');
+          }
+
           const style = doc.createElement('style');
           style.innerHTML = `
             * {
@@ -166,7 +177,12 @@ export default function InvoiceView() {
         </div>
       </div>
 
-      <div id="invoice-content" className="bg-[#161B22] border border-slate-800 shadow-2xl rounded-3xl overflow-hidden print:bg-white print:text-black print:border-0 print:shadow-none print:m-0">
+      <div id="invoice-content" className="bg-[#161B22] border border-slate-800 shadow-2xl rounded-3xl overflow-hidden print:bg-white print:text-black print:border-0 print:shadow-none print:m-0 relative">
+        {/* Copy Indicator for Print */}
+        <div className="hidden print:block absolute top-4 right-10 text-[8px] font-black uppercase tracking-[0.4em] text-slate-400">
+          Original Customer Copy
+        </div>
+
         <div className="p-10 lg:p-16">
           {/* Header */}
           <div className="flex flex-col md:flex-row justify-between items-start gap-8 mb-16 relative">
@@ -335,16 +351,46 @@ export default function InvoiceView() {
 
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          body { background: white !important; }
+          @page { size: auto; margin: 0; }
+          body { 
+            background: white !important; 
+            color: black !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          :root {
+            --bg-page: #ffffff !important;
+            --bg-card: #ffffff !important;
+            --text-primary: #000000 !important;
+            --text-secondary: #475569 !important;
+            --border-color: #e2e8f0 !important;
+          }
           .print\\:hidden { display: none !important; }
-          main { padding: 0 !important; }
-          header { display: none !important; }
-          aside { display: none !important; }
+          main { 
+            padding: 0 !important; 
+            margin: 0 !important;
+            overflow: visible !important;
+            display: block !important;
+          }
+          header, aside, .flex-none { display: none !important; }
           #invoice-content { 
             border: none !important; 
             border-radius: 0 !important;
             box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
           }
+          /* Force text colors for visibility */
+          .text-white { color: black !important; }
+          .text-slate-400, .text-slate-500 { color: #475569 !important; }
+          .text-amber-500 { color: #d97706 !important; }
+          .bg-[#0B0D11], .bg-[#161B22], .bg-[#0B0D11]/30 { background: #f8fafc !important; }
+          .border-slate-800 { border-color: #e2e8f0 !important; }
         }
         
         /* PDF Export Styles */

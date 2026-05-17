@@ -17,7 +17,7 @@ import {
   ChevronUp,
   ChevronDown
 } from 'lucide-react';
-import { collection, onSnapshot, addDoc, updateDoc, doc, getDoc, runTransaction, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, doc, getDoc, runTransaction, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, formatDate, cn, handleFirestoreError, OperationType, CURRENCY_SYMBOL } from '../lib/utils';
 import { downloadCSV } from '../lib/csvExport';
@@ -57,6 +57,7 @@ export default function Sales() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
 
   // For New Sale Form
@@ -105,15 +106,25 @@ export default function Sales() {
   }, []);
 
   const handleDeleteSale = async (sale: Sale) => {
+    if (deletingIds.has(sale.id)) return;
     if (!window.confirm('Are you sure you want to delete this sale? This will revert customer balance and product stock.')) return;
 
+    setDeletingIds(prev => new Set(prev).add(sale.id));
     try {
       await runTransaction(db, async (transaction) => {
+        // 1. Prepare all references
         const saleRef = doc(db, 'sales', sale.id);
         const customerRef = doc(db, 'customers', sale.customerId);
-        const customerSnap = await transaction.get(customerRef);
+        // Safely map items
+        const items = sale.items || [];
+        const productRefs = items.map(item => doc(db, 'products', item.productId));
 
-        // 1. Revert Customer Balance and Paid Amount
+        // 2. Perform all reads first
+        const customerSnap = await transaction.get(customerRef);
+        const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+
+        // 3. Perform all writes
+        // Revert Customer Balance and Paid Amount
         if (customerSnap.exists()) {
           const currentData = customerSnap.data();
           const unpaidAmount = sale.totalAmount - sale.paidAmount;
@@ -124,22 +135,32 @@ export default function Sales() {
           });
         }
 
-        // 2. Revert Product Stock
-        for (const item of sale.items) {
-          const productRef = doc(db, 'products', item.productId);
-          const productSnap = await transaction.get(productRef);
-          if (productSnap.exists()) {
-            transaction.update(productRef, {
-              stock: productSnap.data().stock + item.quantity
+        // Revert Product Stock
+        items.forEach((item, index) => {
+          const snap = productSnaps[index];
+          if (snap.exists()) {
+            transaction.update(productRefs[index], {
+              stock: (snap.data().stock || 0) + item.quantity
             });
           }
-        }
+        });
 
-        // 3. Delete the Sale
+        // Delete the Sale
         transaction.delete(saleRef);
+        
+        // Also delete associated commission if exists
+        const commissionsSnap = await getDocs(query(collection(db, 'commissions'), where('saleId', '==', sale.id)));
+        commissionsSnap.forEach(cDoc => transaction.delete(cDoc.ref));
       });
+      alert('Sale deleted successfully.');
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `sales/${sale.id}`);
+    } finally {
+      setDeletingIds(prev => {
+        const next = new Set(prev);
+        next.delete(sale.id);
+        return next;
+      });
     }
   };
 
@@ -502,9 +523,13 @@ export default function Sales() {
                         </button>
                         <button 
                           onClick={() => handleDeleteSale(s)}
-                          className="h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 text-slate-500 hover:text-rose-500 hover:border-rose-500/50 transition-all shadow-lg"
+                          disabled={deletingIds.has(s.id)}
+                          className={cn(
+                            "h-9 w-9 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-800 transition-all shadow-lg",
+                            deletingIds.has(s.id) ? "opacity-50 cursor-not-allowed" : "text-slate-500 hover:text-rose-500 hover:border-rose-500/50"
+                          )}
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={16} className={cn(deletingIds.has(s.id) && "animate-spin")} />
                         </button>
                       </div>
                     </td>
