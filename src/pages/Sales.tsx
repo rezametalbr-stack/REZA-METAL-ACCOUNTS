@@ -172,12 +172,20 @@ export default function Sales() {
 
     const existing = cartItems.find(item => item.productId === productId);
     if (existing) {
+      if (existing.quantity + 1 > (product.stock || 0)) {
+        alert(`Insufficient stock for ${product.name}. Only ${product.stock} units available.`);
+        return;
+      }
       setCartItems(cartItems.map(item => 
         item.productId === productId 
           ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.price }
           : item
       ));
     } else {
+      if ((product.stock || 0) <= 0) {
+        alert(`${product.name} is out of stock.`);
+        return;
+      }
       setCartItems([...cartItems, {
         productId: product.id,
         name: product.name,
@@ -228,6 +236,19 @@ export default function Sales() {
         const productRefs = cartItems.map(item => doc(db, 'products', item.productId));
         const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
         
+        // --- STOCK VALIDATION CHECK ---
+        for (let i = 0; i < cartItems.length; i++) {
+          const snap = productSnaps[i];
+          const item = cartItems[i];
+          if (!snap.exists()) {
+            throw new Error(`Product ${item.name} no longer exists.`);
+          }
+          const currentStock = snap.data().stock || 0;
+          if (currentStock < item.quantity) {
+            throw new Error(`Insufficient stock for ${item.name}. Available: ${currentStock}, Requested: ${item.quantity}`);
+          }
+        }
+
         const customerRef = doc(db, 'customers', selectedCustomer);
         const customerSnap = await transaction.get(customerRef);
 
