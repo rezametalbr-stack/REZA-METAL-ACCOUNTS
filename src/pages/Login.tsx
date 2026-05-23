@@ -5,7 +5,7 @@ import { LogIn, User, Lock, AlertCircle, Building2, ShieldCheck } from 'lucide-r
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function Login() {
-  const { user, login, loading } = useAuth();
+  const { user, login, loading, authError, clearAuthError } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,8 +24,12 @@ export default function Login() {
       if (!success) {
         setError('Invalid credentials. Access denied.');
       }
-    } catch (err) {
-      setError('System authentication error. Please try again.');
+    } catch (err: any) {
+      if (err?.code === 'auth/admin-restricted-operation' || err?.message?.includes('admin-restricted-operation') || authError === 'ANONYMOUS_AUTH_DISABLED') {
+        setError('Firebase Anonymous authentication is disabled.');
+      } else {
+        setError('System authentication error. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -106,13 +110,40 @@ export default function Login() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-xs font-black uppercase tracking-tight"
+                  className="flex flex-col gap-2 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-xs font-black uppercase tracking-tight"
                 >
-                  <AlertCircle size={16} />
-                  {error}
+                  <div className="flex items-center gap-3">
+                    <AlertCircle size={16} />
+                    <span>{error}</span>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {authError === 'ANONYMOUS_AUTH_DISABLED' && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-left space-y-3"
+              >
+                <div className="flex items-center gap-2 text-amber-500 font-extrabold uppercase tracking-wider text-[11px]">
+                  <AlertCircle size={16} />
+                  <span>Configure Firebase Console</span>
+                </div>
+                <p className="text-slate-300 text-[11px] leading-relaxed font-semibold">
+                  To host your own copy, you must enable the <strong>Anonymous</strong> sign-in method in your Firebase console:
+                </p>
+                <ol className="list-decimal list-inside text-[10px] text-slate-400 space-y-1.5 font-bold uppercase tracking-tight">
+                  <li>Open the <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-amber-500 underline hover:text-amber-400">Firebase Console</a></li>
+                  <li>Click on <strong className="text-white">Authentication</strong></li>
+                  <li>Go to the <strong className="text-white">Sign-in method</strong> tab</li>
+                  <li>Add/Enable the <strong className="text-amber-500">Anonymous</strong> provider</li>
+                </ol>
+                <p className="text-[9px] text-amber-500/80 font-black uppercase tracking-wider bg-amber-500/5 p-2 rounded-lg border border-amber-500/10">
+                  👉 Restart the app or refresh after enabling.
+                </p>
+              </motion.div>
+            )}
 
             <button
               type="submit"

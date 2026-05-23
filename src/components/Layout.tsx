@@ -24,7 +24,9 @@ import {
   Moon,
   Bell,
   Search,
-  ArrowRight
+  ArrowRight,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { 
   collection, 
@@ -44,7 +46,8 @@ import { cn } from '../lib/utils';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { profile, logout } = useAuth();
+  const { profile, logout, authError, retryAuth } = useAuth();
+  const [isRetryingAuth, setIsRetryingAuth] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const { settings: businessSettings } = useSettings();
   const location = useLocation();
@@ -574,7 +577,50 @@ export default function Layout() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 lg:p-10">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-10 border-t border-[var(--border-color)]">
+          {authError === 'ANONYMOUS_AUTH_DISABLED' && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-8 p-6 bg-amber-500/10 border border-amber-500/20 rounded-[2rem] max-w-4xl shadow-lg relative overflow-hidden backdrop-blur-md"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-3xl rounded-full" />
+              <div className="flex flex-col sm:flex-row gap-5 items-start sm:items-center justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3 text-amber-500 font-black uppercase text-xs tracking-wider">
+                    <AlertTriangle size={18} className="animate-pulse" />
+                    <span>Action Required: Enable Anonymous Sign-In</span>
+                  </div>
+                  <p className="text-slate-300 text-xs font-semibold leading-relaxed max-w-2xl">
+                    Your database changes will not save because <strong>Anonymous Auth</strong> is disabled in your Firebase project. To enable it:
+                  </p>
+                  <ol className="list-decimal list-inside text-[11px] text-slate-400 font-bold uppercase tracking-tight space-y-1 pl-1">
+                    <li>Open your <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-amber-500 hover:text-amber-400 underline">Firebase Console</a></li>
+                    <li>Go to <strong className="text-white">Authentication</strong> &gt; <strong className="text-white">Sign-in method</strong> tab</li>
+                    <li>Add & enable the <strong className="text-amber-500">Anonymous</strong> provider</li>
+                  </ol>
+                </div>
+                <button
+                  onClick={async () => {
+                    setIsRetryingAuth(true);
+                    const isOk = await retryAuth();
+                    setIsRetryingAuth(false);
+                    if (isOk) {
+                      console.log("Successfully connected with Firebase anonymously!");
+                    }
+                  }}
+                  disabled={isRetryingAuth}
+                  className={cn(
+                    "px-6 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-500/20 text-black font-black uppercase text-[10px] tracking-wider rounded-xl transition-all shadow-md shrink-0 flex items-center gap-2",
+                    isRetryingAuth ? "animate-pulse" : ""
+                  )}
+                >
+                  <RefreshCw size={12} className={cn("transition-transform", isRetryingAuth ? "animate-spin" : "")} />
+                  {isRetryingAuth ? "Connecting..." : "Retry Connection"}
+                </button>
+              </div>
+            </motion.div>
+          )}
           <Outlet />
         </main>
       </div>
